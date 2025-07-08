@@ -1,0 +1,20 @@
+{
+  "name": "shopee-delivery-partners",
+  "version": "1.0.0",
+  "description": "Sistema de recrutamento e pagamento para parceiros de entrega Shopee",
+  "main": "heroku-server.js",
+  "scripts": {
+    "start": "node heroku-server.js",
+    "build": "npm install && npm run vite:build",
+    "vite:build": "vite build"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "compression": "^1.7.4"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}
