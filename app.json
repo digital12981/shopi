@@ -1,28 +1,38 @@
 {
-  "name": "Shopee Delivery Partners",
+  "name": "shopee-delivery-partners",
   "description": "Sistema de recrutamento e pagamento para parceiros de entrega Shopee",
-  "repository": "https://github.com/digital12981/ENTREGAS",
-  "keywords": ["node", "express", "react", "vite", "typescript"],
+  "repository": "https://github.com/user/shopee-delivery-partners",
+  "logo": "https://cdn.worldvectorlogo.com/logos/shopee-1.svg",
+  "keywords": ["nodejs", "express", "react", "typescript", "heroku"],
+  "image": "heroku/nodejs",
+  "stack": "heroku-22",
   "buildpacks": [
     {
       "url": "heroku/nodejs"
     }
   ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [],
   "env": {
     "NODE_ENV": {
-      "description": "Environment",
+      "description": "Node environment",
       "value": "production"
     },
     "VEHICLE_API_KEY": {
-      "description": "API key for vehicle information lookup",
-      "required": true
+      "description": "Chave da API de consulta de veículos",
+      "required": false
     },
     "VITE_FOR4PAYMENTS_SECRET_KEY": {
-      "description": "For4Payments API secret key",
-      "required": true
+      "description": "Chave secreta do For4Payments",
+      "required": false
     }
   },
   "scripts": {
-    "postdeploy": "npm run build"
+    "postdeploy": "echo 'Deploy concluído com sucesso!'"
   }
 }
