@@ -164,18 +164,121 @@ app.get('*', (req, res) => {
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    // Se não tiver build, mostrar informações da API
-    res.json({
-      name: 'Shopee Delivery Partners',
-      message: 'Frontend não encontrado. Execute o build primeiro.',
-      api_endpoints: [
-        { path: '/api/regions', method: 'GET', description: 'Lista de regiões com vagas disponíveis' },
-        { path: '/api/payments/create-pix', method: 'POST', description: 'Cria um pagamento PIX' },
-        { path: '/api/vehicle-info/:placa', method: 'GET', description: 'Consulta informações de veículo' },
-        { path: '/api/check-ip-status', method: 'GET', description: 'Verificação de status de IP' },
-        { path: '/health', method: 'GET', description: 'Verificação de status da API' }
-      ]
-    });
+    // Se não tiver build, mostrar página de loading HTML
+    res.type('html').send(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Shopee Delivery Partners</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                margin: 0;
+                padding: 0;
+                background: linear-gradient(135deg, #E83D22 0%, #FF6B4A 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .container {
+                background: white;
+                padding: 3rem;
+                border-radius: 20px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+                text-align: center;
+                max-width: 500px;
+                width: 90%;
+            }
+            .logo {
+                width: 80px;
+                height: 80px;
+                margin: 0 auto 2rem;
+            }
+            h1 {
+                color: #E83D22;
+                font-size: 2.2rem;
+                margin-bottom: 1rem;
+                font-weight: 700;
+            }
+            p {
+                color: #666;
+                font-size: 1.1rem;
+                margin-bottom: 2rem;
+                line-height: 1.6;
+            }
+            .status {
+                background: #f8f9fa;
+                padding: 1.5rem;
+                border-radius: 12px;
+                border-left: 4px solid #E83D22;
+                margin: 2rem 0;
+            }
+            .loading {
+                display: inline-block;
+                width: 20px;
+                height: 20px;
+                border: 3px solid #f3f3f3;
+                border-top: 3px solid #E83D22;
+                border-radius: 50%;
+                animation: spin 1s linear infinite;
+                margin-right: 10px;
+            }
+            @keyframes spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            .api-status {
+                background: #e8f5e8;
+                border-left: 4px solid #28a745;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-top: 1rem;
+                text-align: left;
+            }
+            .api-endpoint {
+                font-family: monospace;
+                background: #f8f9fa;
+                padding: 0.3rem 0.6rem;
+                border-radius: 4px;
+                margin: 0.2rem 0;
+                font-size: 0.9rem;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="logo">
+                <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="50" fill="#E83D22"/>
+                    <path d="M30 35h40v30H30z" fill="white"/>
+                    <circle cx="40" cy="55" r="8" fill="#E83D22"/>
+                    <circle cx="60" cy="55" r="8" fill="#E83D22"/>
+                </svg>
+            </div>
+            
+            <h1>Shopee Delivery Partners</h1>
+            <p>Sistema de recrutamento para parceiros de entrega</p>
+            
+            <div class="status">
+                <div class="loading"></div>
+                <strong>API funcionando!</strong>
+                <br><small>Frontend será carregado após o build</small>
+            </div>
+            
+            <div class="api-status">
+                <strong>✅ APIs Disponíveis:</strong>
+                <div class="api-endpoint">GET /api/regions</div>
+                <div class="api-endpoint">GET /api/vehicle-info/:placa</div>
+                <div class="api-endpoint">POST /api/payments/create-pix</div>
+                <div class="api-endpoint">GET /health</div>
+            </div>
+        </div>
+    </body>
+    </html>
+    `);
   }
 });
 
