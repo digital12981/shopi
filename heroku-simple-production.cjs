@@ -1,16 +1,12 @@
-// Servidor de produção que serve o Vite diretamente como no Replit
+// Servidor de produção simples - build uma vez e serve estático
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
-const { createProxyMiddleware } = require('http-proxy-middleware');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 
-// Configuração
 const PORT = process.env.PORT || 5000;
-const VITE_PORT = 3000;
-
-// Inicializar o Express
 const app = express();
 
 // Middlewares essenciais
@@ -24,7 +20,7 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
-// Lista completa de estados do Brasil
+// Estados do Brasil
 const mockRegions = [
   { name: "Acre", abbr: "AC", vacancies: 4 },
   { name: "Alagoas", abbr: "AL", vacancies: 5 },
@@ -55,72 +51,77 @@ const mockRegions = [
   { name: "Tocantins", abbr: "TO", vacancies: 4 }
 ];
 
-console.log('Iniciando servidor Heroku Production...');
+let buildComplete = false;
+let buildError = null;
 
-// Iniciar Vite em modo desenvolvimento
-let viteProcess;
-let viteReady = false;
+// Função para fazer build do frontend
+function buildFrontend() {
+  return new Promise((resolve, reject) => {
+    console.log('🏗️ Iniciando build do frontend...');
+    
+    const buildProcess = spawn('npx', ['vite', 'build', '--outDir', 'dist/public'], {
+      stdio: 'pipe'
+    });
 
-function startVite() {
-  console.log('Iniciando Vite em modo desenvolvimento...');
-  viteProcess = spawn('npx', ['vite', '--host', '0.0.0.0', '--port', VITE_PORT], {
-    stdio: 'pipe',
-    env: { 
-      ...process.env, 
-      PORT: VITE_PORT,
-      NODE_ENV: 'development'
-    }
-  });
+    let output = '';
+    let errorOutput = '';
 
-  viteProcess.stdout.on('data', (data) => {
-    const output = data.toString();
-    console.log('Vite:', output);
-    if (output.includes('Local:') || output.includes('ready')) {
-      viteReady = true;
-      console.log('✅ Vite está pronto!');
-    }
-  });
+    buildProcess.stdout.on('data', (data) => {
+      const text = data.toString();
+      output += text;
+      console.log('Build:', text.trim());
+    });
 
-  viteProcess.stderr.on('data', (data) => {
-    console.log('Vite Error:', data.toString());
-  });
+    buildProcess.stderr.on('data', (data) => {
+      const text = data.toString();
+      errorOutput += text;
+      console.log('Build Error:', text.trim());
+    });
 
-  viteProcess.on('close', (code) => {
-    console.log(`Vite process exited with code ${code}`);
-    viteReady = false;
-    if (code !== 0) {
-      console.log('Reiniciando Vite em 5 segundos...');
-      setTimeout(startVite, 5000);
-    }
+    buildProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ Build concluído com sucesso!');
+        buildComplete = true;
+        resolve();
+      } else {
+        console.log('❌ Build falhou com código:', code);
+        buildError = errorOutput || 'Build falhou';
+        reject(new Error(buildError));
+      }
+    });
+
+    // Timeout de 5 minutos para o build
+    setTimeout(() => {
+      buildProcess.kill();
+      reject(new Error('Build timeout'));
+    }, 300000);
   });
 }
 
-// Middleware para log de requisições
+// Middleware para log
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
 
-// Rota de verificação de saúde/status
+// Rotas da API
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'development',
+    env: process.env.NODE_ENV || 'production',
     port: PORT,
-    vite_port: VITE_PORT
+    buildComplete,
+    buildError
   });
 });
 
-// Rota de regiões
 app.get('/api/regions', (req, res) => {
   res.json(mockRegions);
 });
 
-// Simulação da API de consulta de veículos
 app.get('/api/vehicle-info/:placa', (req, res) => {
   const { placa } = req.params;
-  
   console.log(`Consultando veículo: ${placa}`);
   
   const mockVehicleData = {
@@ -138,7 +139,6 @@ app.get('/api/vehicle-info/:placa', (req, res) => {
   res.json(mockVehicleData);
 });
 
-// Verificação de status de IP
 app.get('/api/check-ip-status', (req, res) => {
   const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
   
@@ -150,7 +150,6 @@ app.get('/api/check-ip-status', (req, res) => {
   });
 });
 
-// Configuração para pagamentos
 app.post('/api/payments/create-pix', (req, res) => {
   const { name, cpf, email, phone, amount } = req.body;
   
@@ -175,7 +174,7 @@ app.post('/api/payments/create-pix', (req, res) => {
   res.json(pixResponse);
 });
 
-// Middleware para tratar rotas não encontradas da API
+// Middleware para APIs não encontradas
 app.use('/api/*', (req, res) => {
   res.status(404).json({
     error: 'API endpoint not found',
@@ -183,22 +182,76 @@ app.use('/api/*', (req, res) => {
   });
 });
 
-// Middleware para verificar se deve usar proxy ou fallback
-app.use('/', (req, res, next) => {
-  // Se for rota da API, deixar passar para as rotas definidas acima
-  if (req.path.startsWith('/api/') || req.path === '/health') {
-    return next();
-  }
+// Servir arquivos estáticos buildados
+app.use(express.static(path.join(__dirname, 'dist/public'), {
+  maxAge: '1d', // Cache por 1 dia
+  etag: true
+}));
 
-  // Se Vite não estiver pronto, mostrar página de loading
-  if (!viteReady) {
-    return res.type('html').send(`
+// Rota para SPA (Single Page Application)
+app.get('*', (req, res) => {
+  const buildPath = path.join(__dirname, 'dist/public');
+  const indexPath = path.join(buildPath, 'index.html');
+  
+  // Se build foi concluído e arquivo existe
+  if (buildComplete && fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } 
+  // Se houve erro no build
+  else if (buildError) {
+    res.status(503).type('html').send(`
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Shopee Delivery Partners - Carregando</title>
+        <title>Shopee Delivery Partners - Erro</title>
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                margin: 0;
+                padding: 0;
+                background: linear-gradient(135deg, #E83D22 0%, #FF6B4A 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .container {
+                background: white;
+                padding: 3rem;
+                border-radius: 20px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+                text-align: center;
+                max-width: 500px;
+                width: 90%;
+            }
+            h1 { color: #E83D22; }
+            .error { background: #ffe6e6; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Shopee Delivery Partners</h1>
+            <p>Erro no build da aplicação</p>
+            <div class="error">
+                <strong>Detalhes:</strong> ${buildError}
+            </div>
+            <button onclick="window.location.reload()">Tentar novamente</button>
+        </div>
+    </body>
+    </html>
+    `);
+  }
+  // Se build ainda não foi concluído
+  else {
+    res.type('html').send(`
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Shopee Delivery Partners - Preparando</title>
         <style>
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -239,100 +292,85 @@ app.use('/', (req, res, next) => {
                 border-radius: 20px;
                 padding: 3px;
                 margin: 20px 0;
+                overflow: hidden;
             }
             .progress-bar {
                 background: linear-gradient(45deg, #E83D22, #FF6B4A);
                 height: 20px;
                 border-radius: 20px;
-                animation: progress 3s infinite;
+                animation: progress 5s ease-in-out infinite;
             }
             @keyframes progress {
                 0% { width: 10%; }
-                50% { width: 70%; }
-                100% { width: 90%; }
+                50% { width: 80%; }
+                100% { width: 95%; }
             }
         </style>
         <script>
-            let attempts = 0;
-            function checkVite() {
-                attempts++;
+            function checkBuild() {
                 fetch('/health')
                   .then(response => response.json())
                   .then(data => {
-                    if (data.status === 'ok') {
-                      setTimeout(() => window.location.reload(), 1000);
+                    if (data.buildComplete) {
+                      window.location.reload();
+                    } else if (data.buildError) {
+                      document.querySelector('.container').innerHTML = 
+                        '<h1>Erro no Build</h1><p>' + data.buildError + '</p><button onclick="window.location.reload()">Tentar novamente</button>';
                     } else {
-                      setTimeout(checkVite, 2000);
+                      setTimeout(checkBuild, 3000);
                     }
                   })
-                  .catch(() => {
-                    if (attempts < 10) {
-                      setTimeout(checkVite, 2000);
-                    } else {
-                      document.querySelector('.container').innerHTML = 
-                        '<h1>Shopee Delivery Partners</h1><p>Erro ao carregar. <button onclick="window.location.reload()">Tentar novamente</button></p>';
-                    }
-                  });
+                  .catch(() => setTimeout(checkBuild, 5000));
             }
-            setTimeout(checkVite, 3000);
+            setTimeout(checkBuild, 5000);
         </script>
     </head>
     <body>
         <div class="container">
             <div class="loading"></div>
             <h1>Shopee Delivery Partners</h1>
-            <p>Preparando sua aplicação...</p>
+            <p>Preparando sua aplicação React...</p>
             <div class="progress">
                 <div class="progress-bar"></div>
             </div>
-            <small>Aguarde alguns instantes</small>
+            <small>Fazendo build da aplicação. Isso pode levar alguns minutos.</small>
         </div>
     </body>
     </html>
     `);
   }
-
-  // Se Vite estiver pronto, usar proxy
-  const proxy = createProxyMiddleware({
-    target: `http://localhost:${VITE_PORT}`,
-    changeOrigin: true,
-    ws: true,
-    timeout: 30000,
-    onError: (err, req, res) => {
-      console.log('Proxy error:', err.message);
-      viteReady = false; // Marcar como não pronto se houver erro
-      res.status(503).type('html').send(`
-        <html><body><h1>Erro temporário</h1><p>Recarregando...</p><script>setTimeout(() => window.location.reload(), 2000);</script></body></html>
-      `);
-    }
-  });
-
-  proxy(req, res, next);
 });
 
-// Iniciar Vite primeiro
-startVite();
-
-// Aguardar um momento para Vite iniciar, então iniciar o servidor principal
-setTimeout(() => {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Servidor Heroku Production rodando na porta ${PORT}`);
-    console.log(`Proxy configurado para Vite na porta ${VITE_PORT}`);
-    console.log(`Ambiente: ${process.env.NODE_ENV || 'development'}`);
+// Iniciar build e depois o servidor
+async function initialize() {
+  console.log('🚀 Iniciando servidor Heroku Simples...');
+  
+  // Iniciar servidor imediatamente para responder requisições
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Servidor rodando na porta ${PORT}`);
+    console.log(`📦 Iniciando build em background...`);
   });
-}, 2000);
-
-// Cleanup na saída
-process.on('SIGTERM', () => {
-  if (viteProcess) {
-    viteProcess.kill();
+  
+  // Fazer build em background
+  try {
+    await buildFrontend();
+    console.log('🎉 Aplicação pronta! Frontend buildado com sucesso.');
+  } catch (error) {
+    console.log('💥 Erro no build:', error.message);
+    buildError = error.message;
   }
+}
+
+// Cleanup
+process.on('SIGTERM', () => {
+  console.log('Recebido SIGTERM, encerrando...');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  if (viteProcess) {
-    viteProcess.kill();
-  }
+  console.log('Recebido SIGINT, encerrando...');
   process.exit(0);
 });
+
+// Inicializar
+initialize();
