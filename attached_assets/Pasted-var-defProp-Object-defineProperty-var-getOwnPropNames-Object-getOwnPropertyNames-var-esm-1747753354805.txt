@@ -1,0 +1,2517 @@
+var __defProp = Object.defineProperty;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+
+// server/payment.ts
+var payment_exports = {};
+__export(payment_exports, {
+  PaymentService: () => PaymentService,
+  paymentService: () => paymentService
+});
+import axios from "axios";
+var PaymentService, paymentService;
+var init_payment = __esm({
+  "server/payment.ts"() {
+    "use strict";
+    PaymentService = class {
+      API_URL = "https://app.for4payments.com.br/api/v1";
+      secretKey;
+      constructor() {
+        const secretKey = process.env.FOR4PAYMENTS_SECRET_KEY;
+        if (!secretKey) {
+          throw new Error("Chave de API For4Payments n\xE3o configurada");
+        }
+        this.secretKey = secretKey;
+      }
+      /**
+       * Cria um pagamento PIX
+       */
+      async createPixPayment(data) {
+        try {
+          console.log("Processando pagamento PIX via For4Payments API:", {
+            name: data.name,
+            email: data.email,
+            cpf: data.cpf ? data.cpf.substring(0, 3) + "..." + data.cpf.substring(data.cpf.length - 2) : "",
+            amount: data.amount
+          });
+          const cpf = data.cpf.replace(/\D/g, "");
+          const amountInCents = Math.round(data.amount * 100);
+          console.log(`[DEBUG-PAYMENT] Valor original: ${data.amount}, em centavos: ${amountInCents}`);
+          const phone = data.phone ? data.phone.replace(/\D/g, "") : this.generateRandomPhone();
+          const paymentData = {
+            name: data.name,
+            email: data.email || this.generateRandomEmail(data.name),
+            cpf,
+            phone,
+            paymentMethod: "PIX",
+            amount: amountInCents,
+            items: data.items || [{
+              title: "Kit de Seguran\xE7a Shopee",
+              quantity: 1,
+              unitPrice: amountInCents,
+              tangible: true
+            }]
+          };
+          console.log("Enviando dados para API For4Payments");
+          const headers = {
+            "Authorization": this.secretKey,
+            // A API espera apenas o token sem o prefixo 'Bearer'
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-Cache-Buster": Date.now().toString(),
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+          };
+          const response = await axios.post(
+            `${this.API_URL}/transaction.purchase`,
+            paymentData,
+            { headers, timeout: 3e4 }
+          );
+          console.log("Resposta da API For4Payments:", response.status);
+          if (response.status === 200) {
+            const responseData = response.data;
+            console.log("Dados da transa\xE7\xE3o recebidos");
+            let pixCode = null;
+            let pixQrCode = null;
+            if (responseData.pixCode) pixCode = responseData.pixCode;
+            else if (responseData.copy_paste) pixCode = responseData.copy_paste;
+            else if (responseData.code) pixCode = responseData.code;
+            else if (responseData.pix_code) pixCode = responseData.pix_code;
+            else if (responseData.pix?.code) pixCode = responseData.pix.code;
+            else if (responseData.pix?.copy_paste) pixCode = responseData.pix.copy_paste;
+            else if (responseData.pix?.pixCode) pixCode = responseData.pix.pixCode;
+            if (responseData.pixQrCode) pixQrCode = responseData.pixQrCode;
+            else if (responseData.qr_code_image) pixQrCode = responseData.qr_code_image;
+            else if (responseData.qr_code) pixQrCode = responseData.qr_code;
+            else if (responseData.pix_qr_code) pixQrCode = responseData.pix_qr_code;
+            else if (responseData.pix?.qrCode) pixQrCode = responseData.pix.qrCode;
+            else if (responseData.pix?.qr_code_image) pixQrCode = responseData.pix.qr_code_image;
+            else if (responseData.pix?.pixQrCode) pixQrCode = responseData.pix.pixQrCode;
+            if (!pixQrCode && pixCode) {
+              pixQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixCode)}`;
+            }
+            if (!pixCode) {
+              throw new Error("C\xF3digo PIX n\xE3o encontrado na resposta da API");
+            }
+            const result = {
+              id: responseData.id || responseData.transactionId || `tx_${Date.now()}`,
+              pixCode,
+              pixQrCode: pixQrCode || "",
+              status: responseData.status || "pending"
+            };
+            console.log(
+              "Transa\xE7\xE3o PIX processada com sucesso:",
+              result.id,
+              "C\xF3digo PIX gerado com",
+              result.pixCode ? result.pixCode.length : 0,
+              "caracteres"
+            );
+            return result;
+          } else {
+            throw new Error(`Erro ao processar pagamento: ${response.statusText}`);
+          }
+        } catch (error) {
+          console.error("Erro na API For4Payments:", error.message);
+          if (error.response) {
+            console.error("Detalhes do erro:", error.response.data);
+          }
+          throw new Error(error.message || "Erro ao processar pagamento");
+        }
+      }
+      // Método auxiliar para gerar email aleatório quando não fornecido
+      generateRandomEmail(name) {
+        const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const randomNum = Math.floor(Math.random() * 1e4).toString().padStart(4, "0");
+        const domains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com"];
+        const domain = domains[Math.floor(Math.random() * domains.length)];
+        return `${cleanName}${randomNum}@${domain}`;
+      }
+      // Método auxiliar para gerar telefone aleatório quando não fornecido
+      generateRandomPhone() {
+        const ddd = Math.floor(Math.random() * (99 - 11 + 1) + 11).toString();
+        const number = Math.floor(Math.random() * 1e9).toString().padStart(9, "0");
+        return `${ddd}${number}`;
+      }
+    };
+    paymentService = new PaymentService();
+  }
+});
+
+// server/email-service.ts
+var email_service_exports = {};
+__export(email_service_exports, {
+  EmailService: () => EmailService,
+  emailService: () => emailService
+});
+import axios2 from "axios";
+var EmailService, emailService;
+var init_email_service = __esm({
+  "server/email-service.ts"() {
+    "use strict";
+    EmailService = class {
+      API_URL = "https://api-entregador.replit.app/api/send";
+      API_KEY = "8c6638b0-7a89-4c3f-bd2c-2afd6d1e4123";
+      /**
+       * Envia um email para o destinatário
+       */
+      async sendEmail(data) {
+        try {
+          console.log(`[EMAIL] Enviando email para ${data.recipient}...`);
+          console.log(`[EMAIL] Assunto: ${data.subject}`);
+          const isProduction = process.env.NODE_ENV === "production";
+          console.log(`[EMAIL] Ambiente: ${isProduction ? "Produ\xE7\xE3o" : "Desenvolvimento"}`);
+          console.log(`[EMAIL] URL da API: ${this.API_URL}`);
+          console.log(`[EMAIL] Dados do email:`, {
+            recipient: data.recipient,
+            subject: data.subject,
+            htmlEnabled: data.html,
+            bodyLength: data.body.length
+          });
+          const response = await axios2.post(
+            this.API_URL,
+            data,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": this.API_KEY,
+                "User-Agent": "ShopeeDeliveryApp/1.0"
+              },
+              timeout: 1e4
+              // 10 segundos de timeout
+            }
+          );
+          if (response.data && response.status === 200) {
+            console.log(`[EMAIL] Resposta da API:`, response.data);
+            console.log(`[EMAIL] Email enviado com sucesso para ${data.recipient}`);
+            return true;
+          } else {
+            console.error(`[EMAIL] Resposta inesperada da API:`, response.data);
+            return false;
+          }
+        } catch (error) {
+          console.error("[EMAIL] Erro ao enviar email:", error.response?.data || error.message);
+          if (error.response) {
+            console.error("[EMAIL] Status do erro:", error.response.status);
+            console.error("[EMAIL] Detalhes da resposta:", error.response.data);
+          } else if (error.request) {
+            console.error("[EMAIL] Erro na requisi\xE7\xE3o (sem resposta do servidor):", error.request);
+          } else {
+            console.error("[EMAIL] Erro ao configurar a requisi\xE7\xE3o:", error.message);
+          }
+          console.error("[EMAIL] Erro completo:", error);
+          return false;
+        }
+      }
+      /**
+       * Envia o email de confirmação de pagamento PIX
+       */
+      async sendPaymentConfirmationEmail(params) {
+        const { email, name, pixCode, pixQrCode, amount, formattedAmount, paymentLink } = params;
+        const expirationDate = /* @__PURE__ */ new Date();
+        expirationDate.setMinutes(expirationDate.getMinutes() + 30);
+        const formattedExpiration = expirationDate.toLocaleString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+        const emailBody = `
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirma\xE7\xE3o de Cadastro - Entregador Shopee</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <h1 style="color: #e84c3d; margin-bottom: 20px; font-size: 24px;">Confirma\xE7\xE3o de Cadastro - Entregador Shopee</h1>
+    
+    <p>Ol\xE1 ${name},</p>
+    
+    <p>Seu cadastro para se tornar Entregador Parceiro Shopee foi aprovado com sucesso.</p>
+    
+    <p>Para finalizar seu processo de registro, voc\xEA precisa realizar o pagamento do Kit de Seguran\xE7a no valor de ${formattedAmount}.</p>
+    
+    <p>Acesse sua p\xE1gina de pagamento pessoal atrav\xE9s do link abaixo:</p>
+    
+    <p style="margin: 30px 0; text-align: center;">
+        <a href="${paymentLink}" style="background-color: #e84c3d; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; font-weight: bold;">Acessar P\xE1gina de Pagamento</a>
+    </p>
+    
+    <p><strong>Informa\xE7\xF5es importantes:</strong></p>
+    <ul>
+        <li>O pagamento deve ser realizado via PIX</li>
+        <li>O link expira em: ${formattedExpiration}</li>
+        <li>O Kit de Seguran\xE7a ser\xE1 entregue em at\xE9 5 dias \xFAteis ap\xF3s confirma\xE7\xE3o do pagamento</li>
+    </ul>
+    
+    <p>O kit cont\xE9m todos os itens necess\xE1rios para iniciar suas atividades como entregador parceiro.</p>
+    
+    <p>Atenciosamente,<br>
+    Equipe Shopee</p>
+    
+    <hr style="border: 1px solid #eee; margin: 30px 0;">
+    
+    <p style="font-size: 12px; color: #777;">
+        Em caso de d\xFAvidas, entre em contato conosco pelo email: suporte.entregador@shopee.com.br<br>
+        Esta \xE9 uma mensagem autom\xE1tica, n\xE3o responda este email.
+    </p>
+</body>
+</html>
+    `;
+        return this.sendEmail({
+          recipient: email,
+          subject: "Cadastro Aprovado - Pagamento do Kit de Seguran\xE7a Shopee",
+          body: emailBody,
+          html: true
+        });
+      }
+    };
+    emailService = new EmailService();
+  }
+});
+
+// server/transaction-monitor.ts
+var transaction_monitor_exports = {};
+__export(transaction_monitor_exports, {
+  checkTransactionStatus: () => checkTransactionStatus,
+  processTransaction: () => processTransaction,
+  reportConversionToFacebook: () => reportConversionToFacebook
+});
+import axios3 from "axios";
+async function checkTransactionStatus(paymentId) {
+  try {
+    if (!process.env.FOR4PAYMENTS_SECRET_KEY) {
+      console.error("[MONITOR] Chave de API For4Payments n\xE3o configurada");
+      return null;
+    }
+    console.log(`[MONITOR] Verificando status da transa\xE7\xE3o: ${paymentId}`);
+    const response = await axios3.get(
+      `https://app.for4payments.com.br/api/v1/transaction.getPayment?id=${paymentId}`,
+      {
+        headers: {
+          "Authorization": process.env.FOR4PAYMENTS_SECRET_KEY,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+    if (response.data && response.status === 200) {
+      console.log(`[MONITOR] Status da transa\xE7\xE3o ${paymentId}: ${response.data.status}`);
+      return response.data;
+    }
+    return null;
+  } catch (error) {
+    console.error("[MONITOR] Erro ao verificar status da transa\xE7\xE3o:", error.message);
+    if (error.response) {
+      console.error("[MONITOR] Detalhes do erro:", error.response.data);
+    }
+    return null;
+  }
+}
+async function reportConversionToFacebook(transactionData) {
+  try {
+    console.log(`[FACEBOOK] Reportando convers\xE3o para o Facebook Pixel: ${FACEBOOK_PIXEL_ID}`);
+    const eventData = {
+      event_name: "Purchase",
+      event_time: Math.floor(Date.now() / 1e3),
+      // Timestamp em segundos
+      event_id: transactionData.id,
+      user_data: {
+        em: transactionData.customer?.email ? encodeUserData(transactionData.customer.email) : void 0,
+        ph: void 0,
+        // Telefone não disponível nos dados da transação
+        external_id: transactionData.customId
+      },
+      custom_data: {
+        currency: "BRL",
+        value: transactionData.amount,
+        status: transactionData.status
+      },
+      action_source: "website"
+    };
+    const response = await axios3.post(
+      `https://graph.facebook.com/v14.0/${FACEBOOK_PIXEL_ID}/events`,
+      {
+        data: [eventData],
+        access_token: process.env.FACEBOOK_ACCESS_TOKEN || ""
+        // Idealmente, adicionar esse token
+      }
+    );
+    if (response.status === 200) {
+      console.log(`[FACEBOOK] Evento reportado com sucesso`);
+      return true;
+    }
+    console.error(`[FACEBOOK] Erro ao reportar evento:`, response.data);
+    return false;
+  } catch (error) {
+    console.error("[FACEBOOK] Erro ao reportar convers\xE3o:", error.message);
+    if (error.response) {
+      console.error("[FACEBOOK] Detalhes do erro:", error.response.data);
+    }
+    return false;
+  }
+}
+async function processTransaction(paymentId) {
+  try {
+    const transactionStatus = await checkTransactionStatus(paymentId);
+    if (!transactionStatus) {
+      console.log(`[MONITOR] Transa\xE7\xE3o ${paymentId} n\xE3o encontrada ou erro na consulta`);
+      return false;
+    }
+    if (transactionStatus.status === "APPROVED") {
+      console.log(`[MONITOR] Transa\xE7\xE3o ${paymentId} APROVADA! Reportando convers\xE3o...`);
+      const reported = await reportConversionToFacebook(transactionStatus);
+      return reported;
+    }
+    console.log(`[MONITOR] Transa\xE7\xE3o ${paymentId} com status: ${transactionStatus.status}. Nenhuma a\xE7\xE3o necess\xE1ria.`);
+    return false;
+  } catch (error) {
+    console.error("[MONITOR] Erro ao processar transa\xE7\xE3o:", error);
+    return false;
+  }
+}
+function encodeUserData(value) {
+  return `hash_${value.substring(0, 3)}*****`;
+}
+var FACEBOOK_PIXEL_ID;
+var init_transaction_monitor = __esm({
+  "server/transaction-monitor.ts"() {
+    "use strict";
+    FACEBOOK_PIXEL_ID = "1418766538994503";
+  }
+});
+
+// server/index.ts
+import express3 from "express";
+
+// server/routes.ts
+import { createServer } from "http";
+import { WebSocketServer, WebSocket } from "ws";
+
+// shared/schema.ts
+var schema_exports = {};
+__export(schema_exports, {
+  allowedDomains: () => allowedDomains,
+  bannedDevices: () => bannedDevices,
+  bannedIps: () => bannedIps,
+  benefits: () => benefits,
+  candidates: () => candidates,
+  candidatesRelations: () => candidatesRelations,
+  insertAllowedDomainSchema: () => insertAllowedDomainSchema,
+  insertBannedDeviceSchema: () => insertBannedDeviceSchema,
+  insertBannedIpSchema: () => insertBannedIpSchema,
+  insertBenefitSchema: () => insertBenefitSchema,
+  insertCandidateSchema: () => insertCandidateSchema,
+  insertStateSchema: () => insertStateSchema,
+  insertUserSchema: () => insertUserSchema,
+  states: () => states,
+  statesRelations: () => statesRelations,
+  users: () => users
+});
+import { pgTable, text, serial, integer, boolean, timestamp, varchar } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { relations } from "drizzle-orm";
+var users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  password: text("password").notNull()
+});
+var insertUserSchema = createInsertSchema(users).pick({
+  username: true,
+  password: true
+});
+var candidates = pgTable("candidates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  state: varchar("state", { length: 2 }).notNull(),
+  city: text("city").notNull(),
+  vehicleType: text("vehicle_type").notNull(),
+  hasExperience: boolean("has_experience").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+var candidatesRelations = relations(candidates, ({ one }) => ({
+  state: one(states, {
+    fields: [candidates.state],
+    references: [states.code]
+  })
+}));
+var states = pgTable("states", {
+  id: serial("id").primaryKey(),
+  code: varchar("code", { length: 2 }).notNull().unique(),
+  name: text("name").notNull(),
+  hasVacancies: boolean("has_vacancies").default(false).notNull(),
+  vacancyCount: integer("vacancy_count").default(0).notNull()
+});
+var statesRelations = relations(states, ({ many }) => ({
+  candidates: many(candidates)
+}));
+var benefits = pgTable("benefits", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  iconName: text("icon_name").notNull()
+});
+var insertCandidateSchema = createInsertSchema(candidates).pick({
+  name: true,
+  email: true,
+  phone: true,
+  state: true,
+  city: true,
+  vehicleType: true,
+  hasExperience: true
+});
+var insertStateSchema = createInsertSchema(states).pick({
+  code: true,
+  name: true,
+  hasVacancies: true,
+  vacancyCount: true
+});
+var insertBenefitSchema = createInsertSchema(benefits).pick({
+  title: true,
+  description: true,
+  iconName: true
+});
+var bannedIps = pgTable("banned_ips", {
+  id: serial("id").primaryKey(),
+  ip: text("ip").notNull().unique(),
+  isBanned: boolean("is_banned").default(true).notNull(),
+  userAgent: text("user_agent"),
+  referer: text("referer"),
+  origin: text("origin"),
+  device: text("device"),
+  browserInfo: text("browser_info"),
+  screenSize: text("screen_size"),
+  platform: text("platform"),
+  language: text("language"),
+  reason: text("reason"),
+  location: text("location"),
+  accessUrl: text("access_url"),
+  bannedAt: timestamp("banned_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  // Novo campo para facilitar sincronização entre instâncias
+  syncStatus: text("sync_status").default("active").notNull(),
+  // Novo campo para identificador exclusivo do dispositivo (mantém banimento em IPs dinâmicos)
+  deviceId: text("device_id"),
+  // Novo campo para data de última tentativa de acesso
+  lastAccessAttempt: timestamp("last_access_attempt")
+});
+var allowedDomains = pgTable("allowed_domains", {
+  id: serial("id").primaryKey(),
+  domain: text("domain").notNull().unique(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+var insertBannedIpSchema = createInsertSchema(bannedIps).pick({
+  ip: true,
+  isBanned: true,
+  userAgent: true,
+  referer: true,
+  origin: true,
+  device: true,
+  browserInfo: true,
+  screenSize: true,
+  platform: true,
+  language: true,
+  reason: true,
+  location: true,
+  accessUrl: true,
+  syncStatus: true,
+  deviceId: true,
+  lastAccessAttempt: true
+});
+var insertAllowedDomainSchema = createInsertSchema(allowedDomains).pick({
+  domain: true,
+  isActive: true
+});
+var bannedDevices = pgTable("banned_devices", {
+  id: serial("id").primaryKey(),
+  deviceId: text("device_id").notNull().unique(),
+  isBanned: boolean("is_banned").default(true).notNull(),
+  originalIp: text("original_ip").notNull(),
+  userAgent: text("user_agent"),
+  reason: text("reason"),
+  bannedAt: timestamp("banned_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+var insertBannedDeviceSchema = createInsertSchema(bannedDevices).pick({
+  deviceId: true,
+  isBanned: true,
+  originalIp: true,
+  userAgent: true,
+  reason: true
+});
+
+// server/db.ts
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import ws from "ws";
+neonConfig.webSocketConstructor = ws;
+if (!process.env.DATABASE_URL) {
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?"
+  );
+}
+var pool = new Pool({ connectionString: process.env.DATABASE_URL });
+var db = drizzle({ client: pool, schema: schema_exports });
+
+// server/storage.ts
+import { eq } from "drizzle-orm";
+var DatabaseStorage = class {
+  // User operations
+  async getUser(id) {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || void 0;
+  }
+  async getUserByUsername(username) {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user || void 0;
+  }
+  async createUser(insertUser) {
+    const [user] = await db.insert(users).values(insertUser).returning();
+    return user;
+  }
+  // Candidate operations
+  async getCandidate(id) {
+    const [candidate] = await db.select().from(candidates).where(eq(candidates.id, id));
+    return candidate || void 0;
+  }
+  async getCandidateByEmail(email) {
+    const [candidate] = await db.select().from(candidates).where(eq(candidates.email, email));
+    return candidate || void 0;
+  }
+  async createCandidate(insertCandidate) {
+    const [candidate] = await db.insert(candidates).values(insertCandidate).returning();
+    return candidate;
+  }
+  async getAllCandidates() {
+    return await db.select().from(candidates);
+  }
+  // State operations
+  async getState(code) {
+    const [state] = await db.select().from(states).where(eq(states.code, code));
+    return state || void 0;
+  }
+  async getAllStates() {
+    return await db.select().from(states);
+  }
+  async getStatesWithVacancies() {
+    return await db.select().from(states).where(eq(states.hasVacancies, true));
+  }
+  async createState(insertState) {
+    const [state] = await db.insert(states).values(insertState).returning();
+    return state;
+  }
+  // Benefit operations
+  async getBenefit(id) {
+    const [benefit] = await db.select().from(benefits).where(eq(benefits.id, id));
+    return benefit || void 0;
+  }
+  async getAllBenefits() {
+    return await db.select().from(benefits);
+  }
+  async createBenefit(insertBenefit) {
+    const [benefit] = await db.insert(benefits).values(insertBenefit).returning();
+    return benefit;
+  }
+  // Banned IP operations
+  async getBannedIp(ip) {
+    const [bannedIp] = await db.select().from(bannedIps).where(eq(bannedIps.ip, ip));
+    return bannedIp || void 0;
+  }
+  async getAllBannedIps() {
+    return await db.select().from(bannedIps);
+  }
+  async createBannedIp(insertBannedIp) {
+    const [bannedIp] = await db.insert(bannedIps).values(insertBannedIp).returning();
+    return bannedIp;
+  }
+  async updateBannedIpStatus(ip, isBanned) {
+    try {
+      const [updatedIp] = await db.update(bannedIps).set({
+        isBanned,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(bannedIps.ip, ip)).returning();
+      return updatedIp || void 0;
+    } catch (error) {
+      console.error("Erro ao atualizar status do IP banido:", error);
+      return void 0;
+    }
+  }
+  async updateLastAccess(ip) {
+    try {
+      await db.update(bannedIps).set({
+        lastAccessAttempt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(bannedIps.ip, ip));
+    } catch (error) {
+      console.error("Erro ao atualizar \xFAltimo acesso do IP:", error);
+    }
+  }
+  // Banned Device operations
+  async getBannedDevice(deviceId) {
+    const [bannedDevice] = await db.select().from(bannedDevices).where(eq(bannedDevices.deviceId, deviceId));
+    return bannedDevice || void 0;
+  }
+  async getAllBannedDevices() {
+    return await db.select().from(bannedDevices);
+  }
+  async createBannedDevice(insertBannedDevice) {
+    const [bannedDevice] = await db.insert(bannedDevices).values(insertBannedDevice).returning();
+    return bannedDevice;
+  }
+  async isBannedByDeviceId(deviceId) {
+    const device = await this.getBannedDevice(deviceId);
+    return !!device && device.isBanned;
+  }
+  // Allowed Domain operations
+  async getAllowedDomain(domain) {
+    const [allowedDomain] = await db.select().from(allowedDomains).where(eq(allowedDomains.domain, domain));
+    return allowedDomain || void 0;
+  }
+  async getAllAllowedDomains() {
+    return await db.select().from(allowedDomains);
+  }
+  async createAllowedDomain(insertAllowedDomain) {
+    const [allowedDomain] = await db.insert(allowedDomains).values(insertAllowedDomain).returning();
+    return allowedDomain;
+  }
+  async updateAllowedDomainStatus(domain, isActive) {
+    try {
+      const [updatedDomain] = await db.update(allowedDomains).set({
+        isActive,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(allowedDomains.domain, domain)).returning();
+      return updatedDomain || void 0;
+    } catch (error) {
+      console.error("Erro ao atualizar status do dom\xEDnio permitido:", error);
+      return void 0;
+    }
+  }
+};
+var storage = new DatabaseStorage();
+
+// server/routes.ts
+init_payment();
+import axios4 from "axios";
+import MobileDetect from "mobile-detect";
+var neverBanIPs = [
+  "201.87.251.",
+  // IP mencionado nos logs como banido incorretamente
+  "201.87.251.220",
+  // IP específico do cliente (sempre permitido)
+  "191.247.4.",
+  // IP mencionado nos logs como banido incorretamente
+  "127.0.0.1",
+  // Localhost
+  "::1"
+  // Localhost IPv6
+];
+function getClientHost(req) {
+  let clientHost = req.headers.origin;
+  if (!clientHost && req.headers.referer) {
+    try {
+      const refererUrl = new URL(req.headers.referer);
+      clientHost = `${refererUrl.protocol}//${refererUrl.host}`;
+    } catch (e) {
+      console.log("[URL] Erro ao processar referer URL:", e);
+    }
+  }
+  if (!clientHost) {
+    if (process.env.NODE_ENV === "production") {
+      clientHost = "https://shopee-entregador.netlify.app";
+    } else {
+      const host = req.get("host") || "";
+      clientHost = `${req.protocol}://${host}`;
+    }
+  }
+  console.log(`[URL] Usando clientHost: ${clientHost}`);
+  return clientHost;
+}
+async function getIpLocation(ip) {
+  try {
+    if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1" || ip.startsWith("::ffff:")) {
+      return "Local Development";
+    }
+    let cleanIp = ip.replace(/^::ffff:/, "");
+    if (cleanIp.includes(",")) {
+      cleanIp = cleanIp.split(",")[0].trim();
+    }
+    if (cleanIp === "127.0.0.1" || cleanIp.startsWith("10.") || cleanIp.startsWith("192.168.") || cleanIp.startsWith("172.")) {
+      return "IP Local/Privado";
+    }
+    const response = await axios4.get(`https://ipinfo.io/${cleanIp}/json`);
+    if (response.data) {
+      const locationData = response.data;
+      if (locationData.city && locationData.country) {
+        return `${locationData.city}, ${locationData.region || ""}, ${locationData.country}`;
+      } else if (locationData.country) {
+        return `${locationData.country}`;
+      }
+    }
+    return "Localiza\xE7\xE3o n\xE3o dispon\xEDvel";
+  } catch (error) {
+    console.error("Erro ao obter localiza\xE7\xE3o do IP:", error);
+    return "Localiza\xE7\xE3o n\xE3o dispon\xEDvel";
+  }
+}
+async function desktopDetectionMiddleware(req, res, next) {
+  if (req.path.startsWith("/api") || req.path.startsWith("/ips") || req.path.startsWith("/domains")) {
+    return next();
+  }
+  const userAgent = req.headers["user-agent"] || "";
+  const md = new MobileDetect(userAgent);
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+  const referer = req.headers.referer || "";
+  const host = req.get("host") || "";
+  const domain = host.split(":")[0];
+  if (domain.includes("replit") || domain.includes("kirk") || domain.includes("-00-")) {
+    console.log(`[DEBUG] Dom\xEDnio de desenvolvimento Replit detectado: ${domain}. Acesso permitido.`);
+    return next();
+  }
+  const allowedDomain = await storage.getAllowedDomain(domain);
+  if (allowedDomain && allowedDomain.isActive) {
+    console.log(`[DEBUG] Dom\xEDnio ${domain} est\xE1 na lista de permitidos. Acesso permitido.`);
+    return next();
+  }
+  const bannedIp = await storage.getBannedIp(ip);
+  if (bannedIp && bannedIp.isBanned) {
+    console.log(`[BLOQUEIO] IP ${ip} est\xE1 banido. Bloqueando acesso.`);
+    return res.status(403).send(`
+      <html>
+        <head>
+          <title>about:blank</title>
+          <script>
+            window.location.href = "about:blank";
+          </script>
+        </head>
+        <body></body>
+      </html>
+    `);
+  }
+  console.log(`[ACESSO] Host: ${domain}, IP: ${ip}, UserAgent: ${userAgent}`);
+  if (userAgent.startsWith("WhatsApp/") && !userAgent.includes("WhatsApp Web")) {
+    console.log(`[PERMITIDO] Acesso via aplicativo WhatsApp Mobile: ${userAgent}. Permitindo acesso.`);
+    return next();
+  }
+  if ((referer.includes("bit.ly/shopee-oficial") || referer.includes("bit.ly/shopee") || referer.includes("bitly/shopee")) && !referer.includes("facebook.com/ads") && !referer.includes("fb.com/ads") && !referer.includes("ad.doubleclick")) {
+    console.log(`[PERMITIDO] Acesso via link oficial bit.ly: ${referer}. Permitindo acesso.`);
+    return next();
+  }
+  if (referer.includes("whatsapp") && !referer.includes("ads") && !referer.includes("ad.") && !referer.includes("admanager")) {
+    console.log(`[PERMITIDO] Acesso via WhatsApp: ${referer}. Permitindo acesso.`);
+    return next();
+  }
+  const utm_source = req.query.utm_source || "";
+  const utm_medium = req.query.utm_medium || "";
+  const utm_campaign = req.query.utm_campaign || "";
+  const isFromAd = typeof utm_source === "string" && (utm_source.toLowerCase().includes("ad") || utm_source.toLowerCase().includes("fbads") || utm_source.toLowerCase().includes("instagram_ad")) || typeof utm_medium === "string" && (utm_medium.toLowerCase().includes("cpc") || utm_medium.toLowerCase().includes("paid") || utm_medium.toLowerCase().includes("ad"));
+  if (!isFromAd && (typeof utm_source === "string" && (utm_source.toLowerCase().includes("whatsapp") || utm_source.toLowerCase().includes("bitly") || utm_source.toLowerCase().includes("shopee")) || typeof utm_medium === "string" && utm_medium.toLowerCase().includes("whatsapp") || typeof utm_campaign === "string" && utm_campaign.toLowerCase().includes("shopee"))) {
+    console.log(`[PERMITIDO] Acesso via campanha oficial org\xE2nica. utm_source: ${utm_source}, utm_medium: ${utm_medium}. Permitindo acesso.`);
+    return next();
+  }
+  const isMobile = md.mobile() !== null || md.phone() !== null || md.tablet() !== null;
+  if (isMobile && !userAgent.includes("WhatsApp Web")) {
+    return next();
+  }
+  const ipBaseWithoutProxy = ip.split(",")[0].trim();
+  if (neverBanIPs.some((whitelistedIP) => ipBaseWithoutProxy.includes(whitelistedIP))) {
+    console.log(`[PERMITIDO] IP ${ip} est\xE1 na lista de exce\xE7\xF5es. Acesso permitido mesmo sendo desktop.`);
+    return next();
+  }
+  const location = await getIpLocation(ip);
+  const origin = req.headers.origin || "";
+  const acceptLanguage = req.headers["accept-language"] || "";
+  let device = "Desktop";
+  if (userAgent.includes("WhatsApp Web")) {
+    device = "WhatsApp Web";
+  }
+  let browserInfo = "Navegador desconhecido";
+  if (userAgent.includes("Chrome")) {
+    browserInfo = `Chrome ${userAgent.match(/Chrome\/([\d.]+)/)?.[1] || ""}`;
+  } else if (userAgent.includes("Firefox")) {
+    browserInfo = `Firefox ${userAgent.match(/Firefox\/([\d.]+)/)?.[1] || ""}`;
+  } else if (userAgent.includes("Safari") && !userAgent.includes("Chrome")) {
+    browserInfo = `Safari ${userAgent.match(/Version\/([\d.]+)/)?.[1] || ""}`;
+  } else if (userAgent.includes("MSIE") || userAgent.includes("Trident")) {
+    browserInfo = `Internet Explorer ${userAgent.match(/(?:MSIE |rv:)([\d.]+)/)?.[1] || ""}`;
+  } else if (userAgent.includes("Edge") || userAgent.includes("Edg/")) {
+    browserInfo = `Microsoft Edge ${userAgent.match(/(?:Edge|Edg)\/([\d.]+)/)?.[1] || ""}`;
+  } else if (userAgent.includes("Opera") || userAgent.includes("OPR")) {
+    browserInfo = `Opera ${userAgent.match(/(?:Opera|OPR)\/([\d.]+)/)?.[1] || ""}`;
+  }
+  let platform = "Plataforma desconhecida";
+  if (userAgent.includes("Windows")) {
+    platform = `Windows ${userAgent.match(/Windows NT ([\d.]+)/)?.[1] || ""}`;
+    if (platform.includes("6.1")) platform = "Windows 7";
+    if (platform.includes("6.2")) platform = "Windows 8";
+    if (platform.includes("6.3")) platform = "Windows 8.1";
+    if (platform.includes("10.0")) platform = "Windows 10/11";
+  } else if (userAgent.includes("Mac OS X")) {
+    platform = `macOS ${userAgent.match(/Mac OS X ([\d_.]+)/)?.[1]?.replace(/_/g, ".") || ""}`;
+  } else if (userAgent.includes("Linux")) {
+    platform = "Linux";
+    if (userAgent.includes("Ubuntu")) platform = "Ubuntu Linux";
+    if (userAgent.includes("Fedora")) platform = "Fedora Linux";
+  } else if (userAgent.includes("Android")) {
+    platform = `Android ${userAgent.match(/Android ([\d.]+)/)?.[1] || ""}`;
+  } else if (userAgent.includes("iOS") || userAgent.includes("iPhone OS")) {
+    platform = `iOS ${userAgent.match(/(?:iOS|iPhone OS) ([\d_]+)/)?.[1]?.replace(/_/g, ".") || ""}`;
+  }
+  let refererAnalysis = "Acesso direto";
+  if (referer) {
+    try {
+      const refererUrl = new URL(referer);
+      if (refererUrl.hostname.includes("facebook")) {
+        refererAnalysis = "Facebook";
+        if (referer.includes("facebook.com/ads")) {
+          refererAnalysis = "An\xFAncio no Facebook";
+        }
+      } else if (refererUrl.hostname.includes("instagram")) {
+        refererAnalysis = "Instagram";
+        if (referer.includes("instagram.com/ads") || referer.includes("ads_manager")) {
+          refererAnalysis = "An\xFAncio no Instagram";
+        }
+      } else if (refererUrl.hostname.includes("google")) {
+        refererAnalysis = "Google";
+        if (referer.includes("google.com/ads") || referer.includes("adwords")) {
+          refererAnalysis = "Google Ads";
+        }
+      } else if (refererUrl.hostname.includes("youtube")) {
+        refererAnalysis = "YouTube";
+      } else if (refererUrl.hostname.includes("twitter") || refererUrl.hostname.includes("x.com")) {
+        refererAnalysis = "Twitter / X";
+      } else if (refererUrl.hostname.includes("pinterest")) {
+        refererAnalysis = "Pinterest";
+      } else if (refererUrl.hostname.includes("tiktok")) {
+        refererAnalysis = "TikTok";
+      } else {
+        refererAnalysis = `De: ${refererUrl.hostname}`;
+      }
+    } catch (e) {
+      refererAnalysis = referer.substring(0, 100);
+    }
+  }
+  const existingBannedIp = await storage.getBannedIp(ip);
+  if (!existingBannedIp) {
+    const bannedIpData = {
+      ip,
+      isBanned: true,
+      userAgent: userAgent || "",
+      referer: referer || "",
+      origin: origin || "",
+      device,
+      browserInfo,
+      screenSize: "",
+      platform,
+      language: acceptLanguage,
+      reason: device === "WhatsApp Web" ? `Tentativa de acesso via WhatsApp Web (${refererAnalysis})` : `Tentativa de acesso via desktop (${refererAnalysis})`,
+      location,
+      accessUrl: req.originalUrl || req.url || "/"
+    };
+    await storage.createBannedIp(bannedIpData);
+    if (typeof connectedClients !== "undefined" && connectedClients.length > 0) {
+      const ipInfo = {
+        ip,
+        userAgent: userAgent || "Desconhecido",
+        device,
+        browserInfo,
+        platform,
+        location,
+        reason: device === "WhatsApp Web" ? `Tentativa de acesso via WhatsApp Web (${refererAnalysis})` : `Tentativa de acesso via desktop (${refererAnalysis})`,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      broadcastToAll({
+        type: "ip_banned",
+        ip: ipInfo
+      });
+      if (typeof deviceStats !== "undefined") {
+        if (device.includes("WhatsApp Web")) {
+          deviceStats = deviceStats.map(
+            (stat) => stat.type === "WhatsApp Web" ? { ...stat, count: stat.count + 1 } : stat
+          );
+        } else if (device.includes("Desktop")) {
+          deviceStats = deviceStats.map(
+            (stat) => stat.type === "Desktop (Bloqueado)" ? { ...stat, count: stat.count + 1 } : stat
+          );
+        }
+        broadcastToAll({
+          type: "device_stats",
+          devices: deviceStats
+        });
+      }
+      if (typeof accessSources !== "undefined") {
+        let source = "Outros";
+        if (referer.includes("whatsapp")) {
+          source = "WhatsApp";
+        } else if (referer.includes("facebook") || referer.includes("fb.com")) {
+          source = "Facebook";
+        } else if (referer.includes("instagram")) {
+          source = "Instagram";
+        } else if (referer.includes("google")) {
+          source = referer.includes("ads") ? "Google" : "Pesquisa Org\xE2nica";
+        } else if (!referer) {
+          source = "Link Direto";
+        }
+        accessSources = accessSources.map(
+          (item) => item.source === source ? { ...item, count: item.count + 1 } : item
+        );
+        broadcastToAll({
+          type: "access_sources",
+          sources: accessSources
+        });
+      }
+    }
+  } else if (!existingBannedIp.isBanned) {
+    await storage.updateBannedIpStatus(ip, true);
+    if (typeof connectedClients !== "undefined" && connectedClients.length > 0) {
+      broadcastToAll({
+        type: "dashboard_stats",
+        stats: await getDashboardStats()
+      });
+    }
+  }
+  console.log(`[BLOQUEIO] IP ${ip} banido por acesso via ${device}. Origem: ${refererAnalysis}, Navegador: ${browserInfo}, SO: ${platform}`);
+  return res.status(403).send(`
+    <html>
+      <head>
+        <title>about:blank</title>
+        <script>
+          window.location.href = "about:blank";
+        </script>
+      </head>
+      <body></body>
+    </html>
+  `);
+}
+async function registerRoutes(app2) {
+  app2.get("/api/check-ip-status", async (req, res) => {
+    try {
+      const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+      const ipBaseWithoutProxy = ip.split(",")[0].trim();
+      const isWhitelisted = neverBanIPs.some((whitelistedIP) => ipBaseWithoutProxy.includes(whitelistedIP));
+      if (isWhitelisted) {
+        return res.json({
+          status: "allowed",
+          message: "IP na lista de exce\xE7\xF5es",
+          ip
+        });
+      }
+      const bannedIp = await storage.getBannedIp(ip);
+      if (bannedIp && bannedIp.isBanned) {
+        await storage.updateLastAccess(ip);
+        return res.json({
+          status: "banned",
+          message: "IP banido no sistema",
+          reason: bannedIp.reason || "Tentativa de acesso n\xE3o permitido",
+          bannedAt: bannedIp.bannedAt,
+          ip
+        });
+      }
+      if (bannedIp && !bannedIp.isBanned) {
+        return res.json({
+          status: "allowed",
+          message: "IP anteriormente banido, agora permitido",
+          ip
+        });
+      }
+      return res.json({
+        status: "allowed",
+        message: "IP n\xE3o banido",
+        ip
+      });
+    } catch (error) {
+      console.error("Erro ao verificar status do IP:", error);
+      res.status(500).json({
+        status: "error",
+        message: "Erro ao verificar status do IP",
+        ip: req.ip
+      });
+    }
+  });
+  app2.get("/api/check-device/:deviceId", async (req, res) => {
+    try {
+      const { deviceId } = req.params;
+      if (!deviceId) {
+        return res.status(400).json({
+          status: "error",
+          message: "ID do dispositivo n\xE3o fornecido"
+        });
+      }
+      const isBanned = await storage.isBannedByDeviceId(deviceId);
+      return res.json({
+        status: isBanned ? "banned" : "allowed",
+        deviceId,
+        message: isBanned ? "Dispositivo banido" : "Dispositivo permitido"
+      });
+    } catch (error) {
+      console.error("Erro ao verificar status do dispositivo:", error);
+      res.status(500).json({
+        status: "error",
+        message: "Erro ao verificar status do dispositivo"
+      });
+    }
+  });
+  app2.use(desktopDetectionMiddleware);
+  app2.get("/health", (req, res) => {
+    res.json({
+      status: "ok",
+      env: process.env.NODE_ENV || "development",
+      version: "1.0.0",
+      message: "For4Payments API est\xE1 operacional",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString()
+    });
+  });
+  app2.get("/api/admin/check-ip-banned", async (req, res) => {
+    try {
+      const ip = req.ip || req.socket.remoteAddress || "0.0.0.0";
+      const bannedIp = await storage.getBannedIp(ip);
+      res.json({
+        isBanned: !!bannedIp?.isBanned,
+        ip,
+        bannedAt: bannedIp?.bannedAt
+      });
+    } catch (error) {
+      console.error("Erro ao verificar IP banido:", error);
+      res.status(500).json({ error: "Erro ao verificar status do IP" });
+    }
+  });
+  app2.post("/api/admin/report-desktop-access", async (req, res) => {
+    try {
+      const ip = req.ip || req.socket.remoteAddress || "0.0.0.0";
+      const { deviceId, userAgent: clientUserAgent, isAboutBlank, screen } = req.body;
+      const ipBaseWithoutProxy = ip.split(",")[0].trim();
+      if (neverBanIPs.some((whitelistedIP) => ipBaseWithoutProxy.includes(whitelistedIP))) {
+        console.log(`[PERMITIDO] IP ${ip} est\xE1 na lista de exce\xE7\xF5es. N\xE3o ser\xE1 banido.`);
+        return res.json({
+          success: true,
+          message: "IP est\xE1 na lista de exce\xE7\xF5es",
+          ip,
+          isBanned: false
+        });
+      }
+      let reportReason = "Acesso via desktop detectado pelo frontend";
+      if (isAboutBlank) {
+        reportReason = "Tentativa de contornar bloqueio via about:blank";
+        console.log(`[ALERTA] Tentativa de bypass via about:blank detectada no IP ${ip}`);
+      }
+      const userAgent = req.headers["user-agent"] || clientUserAgent || "";
+      const referer = req.headers.referer || "";
+      const origin = req.headers.origin || "";
+      const location = await getIpLocation(ip);
+      const screenSize = screen ? `${screen.width}x${screen.height}` : "";
+      let bannedIp = await storage.getBannedIp(ip);
+      if (!bannedIp) {
+        bannedIp = await storage.createBannedIp({
+          ip,
+          isBanned: true,
+          userAgent: userAgent || "",
+          referer: referer || "",
+          origin: origin || "",
+          device: "Desktop (Frontend)",
+          browserInfo: userAgent,
+          screenSize,
+          platform: deviceId || "",
+          // Armazenar deviceId como identificador adicional
+          language: req.headers["accept-language"] || "",
+          reason: reportReason,
+          location,
+          accessUrl: req.originalUrl || req.url || "/"
+        });
+        console.log(`[BLOQUEIO] Novo IP banido via frontend: ${ip}${deviceId ? " (DeviceID: " + deviceId.substr(0, 10) + "...)" : ""}`);
+      } else if (!bannedIp.isBanned) {
+        bannedIp = await storage.updateBannedIpStatus(ip, true);
+        console.log(`[BLOQUEIO] IP atualizado para banido via frontend: ${ip}`);
+      }
+      broadcastToAll2({
+        type: "new_banned_ip",
+        data: {
+          ip,
+          reason: reportReason,
+          userAgent: userAgent || "",
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      });
+      res.json({
+        success: true,
+        message: "IP banido com sucesso",
+        ip,
+        isBanned: true
+      });
+    } catch (error) {
+      console.error("Erro ao banir IP:", error);
+      res.status(500).json({ error: "Erro ao banir IP" });
+    }
+  });
+  app2.post("/api/admin/register-device", async (req, res) => {
+    try {
+      const { deviceId } = req.body;
+      const ip = req.ip || req.socket.remoteAddress || "0.0.0.0";
+      if (!deviceId) {
+        return res.status(400).json({ error: "DeviceID n\xE3o fornecido" });
+      }
+      const ipBaseWithoutProxy = ip.split(",")[0].trim();
+      if (neverBanIPs.some((whitelistedIP) => ipBaseWithoutProxy.includes(whitelistedIP))) {
+        console.log(`[PERMITIDO] IP ${ip} com DeviceID ${deviceId.substr(0, 8)} est\xE1 na lista de exce\xE7\xF5es.`);
+        return res.json({
+          success: true,
+          message: "IP est\xE1 na lista de exce\xE7\xF5es",
+          ip,
+          isBanned: false
+        });
+      }
+      let bannedIp = await storage.getBannedIp(ip);
+      if (!bannedIp) {
+        const userAgent = req.headers["user-agent"] || "";
+        const referer = req.headers.referer || "";
+        const origin = req.headers.origin || "";
+        const location = await getIpLocation(ip);
+        bannedIp = await storage.createBannedIp({
+          ip,
+          isBanned: true,
+          userAgent: userAgent || "",
+          referer: referer || "",
+          origin: origin || "",
+          device: "Mobile (Banned by DeviceID)",
+          browserInfo: userAgent,
+          screenSize: "",
+          platform: deviceId,
+          // Usar platform para armazenar o deviceId
+          language: req.headers["accept-language"] || "",
+          reason: "Acesso de dispositivo previamente banido (deviceId)",
+          location,
+          accessUrl: req.originalUrl || req.url || "/"
+        });
+        console.log(`[BLOQUEIO] IP banido via DeviceID ${deviceId.substr(0, 8)}: ${ip}`);
+        broadcastToAll2({
+          type: "new_banned_ip",
+          data: {
+            ip,
+            reason: "Dispositivo previamente banido",
+            userAgent: userAgent || "",
+            timestamp: (/* @__PURE__ */ new Date()).toISOString()
+          }
+        });
+      }
+      res.json({
+        success: true,
+        message: "Dispositivo registrado com sucesso",
+        ip,
+        isBanned: true
+      });
+    } catch (error) {
+      console.error("Erro ao registrar dispositivo:", error);
+      res.status(500).json({ error: "Erro ao registrar dispositivo" });
+    }
+  });
+  app2.post("/api/proxy/for4payments/pix", async (req, res) => {
+    try {
+      if (!process.env.FOR4PAYMENTS_SECRET_KEY) {
+        console.error("ERRO: FOR4PAYMENTS_SECRET_KEY n\xE3o configurada");
+        return res.status(500).json({
+          error: "Servi\xE7o de pagamento n\xE3o configurado. Configure a chave de API For4Payments."
+        });
+      }
+      console.log("Iniciando proxy para For4Payments...");
+      const apiUrl = "https://app.for4payments.com.br/api/v1/transaction.purchase";
+      const secretKey = process.env.FOR4PAYMENTS_SECRET_KEY;
+      const { name, cpf, email, phone, amount = 84.7, description = "Kit de Seguran\xE7a Shopee Delivery" } = req.body;
+      if (!name || !cpf) {
+        return res.status(400).json({ error: "Nome e CPF s\xE3o obrigat\xF3rios" });
+      }
+      const cleanedCpf = cpf.replace(/[^0-9]/g, "");
+      const cleanedPhone = phone ? phone.replace(/\D/g, "") : null;
+      const amountInCents = Math.round(amount * 100);
+      const userEmail = email || `${name.toLowerCase().replace(/\s+/g, ".")}.${Date.now()}@mail.shopee.br`;
+      const payload = {
+        name,
+        email: userEmail,
+        cpf: cleanedCpf,
+        phone: cleanedPhone,
+        // Telefone limpo, apenas números
+        paymentMethod: "PIX",
+        amount: amountInCents,
+        items: [{
+          title: description || "Kit de Seguran\xE7a",
+          quantity: 1,
+          unitPrice: amountInCents,
+          tangible: false
+        }]
+      };
+      console.log("Enviando requisi\xE7\xE3o para For4Payments API via proxy...", {
+        name: payload.name,
+        cpf: `${cleanedCpf.substring(0, 3)}***${cleanedCpf.substring(cleanedCpf.length - 2)}`
+      });
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": secretKey,
+          // A API espera apenas o token sem o prefixo 'Bearer'
+          "Accept": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      console.log("Resposta da For4Payments recebida pelo proxy");
+      if (response.status === 200 && result && result.pixCode && result.pixQrCode) {
+        const { emailService: emailService2 } = await Promise.resolve().then(() => (init_email_service(), email_service_exports));
+        const formattedAmount = new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL"
+        }).format(amount);
+        const clientHost = getClientHost(req);
+        const paymentLink = `${clientHost}/payment?id=${result.id}&email=${encodeURIComponent(userEmail)}`;
+        try {
+          const emailSent = await emailService2.sendPaymentConfirmationEmail({
+            email: userEmail,
+            name,
+            pixCode: result.pixCode,
+            pixQrCode: result.pixQrCode,
+            amount,
+            formattedAmount,
+            paymentLink
+          });
+          result.emailSent = emailSent;
+          if (emailSent) {
+            console.log(`Email de confirma\xE7\xE3o enviado com sucesso para ${userEmail}`);
+          } else {
+            console.error(`Falha ao enviar email de confirma\xE7\xE3o para ${userEmail}`);
+          }
+        } catch (emailError) {
+          console.error("Erro ao enviar email de confirma\xE7\xE3o:", emailError);
+          result.emailSent = false;
+          result.emailError = "Falha ao enviar email de confirma\xE7\xE3o";
+        }
+      }
+      return res.status(response.status).json(result);
+    } catch (error) {
+      console.error("Erro no proxy For4Payments:", error);
+      return res.status(500).json({
+        error: error.message || "Falha ao processar pagamento pelo proxy"
+      });
+    }
+  });
+  app2.get("/api/states", async (req, res) => {
+    try {
+      const states2 = await storage.getAllStates();
+      res.json(states2);
+    } catch (error) {
+      console.error("Erro ao buscar estados:", error);
+      res.status(500).json({ error: "Falha ao buscar estados" });
+    }
+  });
+  app2.get("/api/states/with-vacancies", async (req, res) => {
+    try {
+      const states2 = await storage.getStatesWithVacancies();
+      res.json(states2);
+    } catch (error) {
+      console.error("Erro ao buscar estados com vagas:", error);
+      res.status(500).json({ error: "Falha ao buscar estados com vagas" });
+    }
+  });
+  app2.get("/api/regions", async (req, res) => {
+    try {
+      const states2 = await storage.getAllStates();
+      const regions = states2.map((state) => ({
+        name: state.name,
+        abbr: state.code,
+        vacancies: state.vacancyCount
+      }));
+      res.json(regions);
+    } catch (error) {
+      console.error("Erro ao buscar regi\xF5es:", error);
+      res.status(500).json({ error: "Falha ao buscar regi\xF5es" });
+    }
+  });
+  const vehicleInfoCache = {};
+  app2.get("/api/vehicle-info/:placa", async (req, res) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
+    if (req.method === "OPTIONS") {
+      return res.status(204).end();
+    }
+    try {
+      const { placa } = req.params;
+      if (!placa) {
+        return res.status(400).json({ error: "Placa do ve\xEDculo n\xE3o fornecida" });
+      }
+      const vehiclePlate = placa.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      if (vehicleInfoCache[vehiclePlate]) {
+        console.log(`[CACHE-SERVER] Usando dados em cache para placa: ${vehiclePlate}`);
+        return res.json(vehicleInfoCache[vehiclePlate]);
+      }
+      console.log(`[INFO] Consultando informa\xE7\xF5es do ve\xEDculo com placa: ${vehiclePlate}`);
+      if (!process.env.VEHICLE_API_KEY) {
+        console.error("[ERRO] Chave da API de consulta de ve\xEDculos n\xE3o configurada");
+        return res.status(500).json({
+          error: "Configura\xE7\xE3o incorreta",
+          details: "Servi\xE7o de consulta de ve\xEDculos n\xE3o configurado. API key ausente.",
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      const keyPreview = process.env.VEHICLE_API_KEY.substring(0, 5) + "..." + process.env.VEHICLE_API_KEY.substring(process.env.VEHICLE_API_KEY.length - 3);
+      console.log(`[DEBUG] API key presente: ${keyPreview}`);
+      const apiKey = process.env.VEHICLE_API_KEY;
+      if (!apiKey) {
+        console.error("[ERRO] Chave API de ve\xEDculos n\xE3o configurada nas vari\xE1veis de ambiente");
+        return res.status(500).json({
+          error: "Servi\xE7o n\xE3o configurado",
+          details: "Chave de API n\xE3o configurada"
+        });
+      }
+      const apiUrl = `https://wdapi2.com.br/consulta/${vehiclePlate}/${apiKey}`;
+      let vehicleData = null;
+      let errorLogs = [];
+      try {
+        console.log("[DEBUG] Tentando consulta direta com chave na URL");
+        const response = await fetch(apiUrl, {
+          method: "GET",
+          headers: {
+            "Accept": "application/json"
+          }
+        });
+        if (response.ok) {
+          vehicleData = await response.json();
+          console.log("[INFO] Consulta de ve\xEDculo bem-sucedida");
+        } else {
+          const status = response.status;
+          console.log("[AVISO] Consulta de ve\xEDculo falhou:", status);
+          errorLogs.push(`Consulta falhou: Status ${status}`);
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error("[ERRO] Falha na consulta de ve\xEDculo:", errorMsg);
+        errorLogs.push(`Erro na consulta: ${errorMsg}`);
+      }
+      if (!vehicleData) {
+        console.error("[ERRO] Todas as tentativas falharam");
+        if (process.env.NODE_ENV === "development") {
+          console.log("[DEBUG] Fornecendo dados de ve\xEDculo de teste para desenvolvimento");
+          return res.json({
+            marca: "Toyota (Teste)",
+            modelo: "Corolla (Teste)",
+            ano: "2023",
+            anoModelo: "2023",
+            chassi: "TESTE123456789",
+            cor: "Prata",
+            placa: vehiclePlate
+          });
+        }
+        return res.status(500).json({
+          error: "Falha ao consultar dados do ve\xEDculo",
+          details: "Todas as tentativas de consulta falharam. Verifique sua conex\xE3o ou a chave de API.",
+          errorLogs,
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      if (vehicleData.error) {
+        console.log(`[INFO] Erro na consulta da placa ${vehiclePlate}: ${vehicleData.error}`);
+        return res.status(404).json({
+          error: vehicleData.error,
+          placa: vehiclePlate,
+          message: "A API de ve\xEDculos retornou um erro para esta placa.",
+          timestamp: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      const responseData = {
+        MARCA: vehicleData.MARCA || vehicleData.marca || "N\xE3o informado",
+        MODELO: vehicleData.MODELO || vehicleData.modelo || "N\xE3o informado",
+        marca: vehicleData.MARCA || vehicleData.marca || "N\xE3o informado",
+        modelo: vehicleData.MODELO || vehicleData.modelo || "N\xE3o informado",
+        ano: vehicleData.ano || vehicleData.anoModelo || "N\xE3o informado",
+        anoModelo: vehicleData.anoModelo || vehicleData.ano || "N\xE3o informado",
+        chassi: vehicleData.chassi || "N\xE3o informado",
+        cor: vehicleData.cor || "N\xE3o informado",
+        placa: vehiclePlate
+      };
+      vehicleInfoCache[vehiclePlate] = responseData;
+      console.log(`[CACHE-SERVER] Armazenando dados da placa ${vehiclePlate} em cache`);
+      return res.json(responseData);
+    } catch (error) {
+      console.error("Erro ao consultar informa\xE7\xF5es do ve\xEDculo:", error);
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      res.status(500).json({
+        error: "Erro ao consultar informa\xE7\xF5es do ve\xEDculo",
+        details: errorMessage,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  });
+  app2.post("/api/states", async (req, res) => {
+    try {
+      const stateData = insertStateSchema.parse(req.body);
+      const state = await storage.createState(stateData);
+      res.status(201).json(state);
+    } catch (error) {
+      console.error("Erro ao criar estado:", error);
+      res.status(400).json({ error: "Dados inv\xE1lidos para criar estado" });
+    }
+  });
+  app2.get("/api/benefits", async (req, res) => {
+    try {
+      const benefits2 = await storage.getAllBenefits();
+      res.json(benefits2);
+    } catch (error) {
+      console.error("Erro ao buscar benef\xEDcios:", error);
+      res.status(500).json({ error: "Falha ao buscar benef\xEDcios" });
+    }
+  });
+  app2.post("/api/benefits", async (req, res) => {
+    try {
+      const benefitData = insertBenefitSchema.parse(req.body);
+      const benefit = await storage.createBenefit(benefitData);
+      res.status(201).json(benefit);
+    } catch (error) {
+      console.error("Erro ao criar benef\xEDcio:", error);
+      res.status(400).json({ error: "Dados inv\xE1lidos para criar benef\xEDcio" });
+    }
+  });
+  app2.post("/api/candidates", async (req, res) => {
+    try {
+      const candidateData = insertCandidateSchema.parse(req.body);
+      const existingCandidate = await storage.getCandidateByEmail(candidateData.email);
+      if (existingCandidate) {
+        return res.status(409).json({ error: "Email j\xE1 cadastrado" });
+      }
+      const state = await storage.getState(candidateData.state);
+      if (!state) {
+        return res.status(400).json({ error: "Estado inv\xE1lido" });
+      }
+      const candidate = await storage.createCandidate(candidateData);
+      res.status(201).json(candidate);
+    } catch (error) {
+      console.error("Erro ao criar candidato:", error);
+      res.status(400).json({ error: "Dados inv\xE1lidos para criar candidato" });
+    }
+  });
+  app2.get("/api/candidates", async (req, res) => {
+    try {
+      const candidates2 = await storage.getAllCandidates();
+      res.json(candidates2);
+    } catch (error) {
+      console.error("Erro ao buscar candidatos:", error);
+      res.status(500).json({ error: "Falha ao buscar candidatos" });
+    }
+  });
+  app2.post("/api/payments", async (req, res) => {
+    try {
+      if (!process.env.FOR4PAYMENTS_SECRET_KEY) {
+        console.error("ERRO: FOR4PAYMENTS_SECRET_KEY n\xE3o configurada");
+        return res.status(500).json({
+          error: "Servi\xE7o de pagamento n\xE3o configurado. Configure a chave de API For4Payments."
+        });
+      }
+      console.log("Dados de pagamento recebidos:", req.body);
+      const { name, email, cpf, phone, amount, items } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Nome \xE9 obrigat\xF3rio." });
+      }
+      if (!cpf) {
+        return res.status(400).json({ error: "CPF \xE9 obrigat\xF3rio." });
+      }
+      const paymentAmount = amount || 7990;
+      const userEmail = email || `${name.toLowerCase().replace(/\s+/g, ".")}.${Date.now()}@mail.shopee.br`;
+      console.log(`Processando pagamento de R$ ${paymentAmount / 100} para ${name}, CPF ${cpf}`);
+      const paymentResult = await paymentService.createPixPayment({
+        name,
+        email: userEmail,
+        cpf,
+        phone: phone || "",
+        amount: paymentAmount / 100,
+        items
+      });
+      console.log("Resultado do pagamento For4Payments:", paymentResult);
+      if (paymentResult.pixCode && paymentResult.pixQrCode) {
+        const { emailService: emailService2 } = await Promise.resolve().then(() => (init_email_service(), email_service_exports));
+        const formattedAmount = new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL"
+        }).format(paymentAmount / 100);
+        const clientHost = getClientHost(req);
+        const paymentLink = `${clientHost}/payment?id=${paymentResult.id}&email=${encodeURIComponent(userEmail)}`;
+        try {
+          const emailSent = await emailService2.sendPaymentConfirmationEmail({
+            email: userEmail,
+            name,
+            pixCode: paymentResult.pixCode,
+            pixQrCode: paymentResult.pixQrCode,
+            amount: paymentAmount / 100,
+            formattedAmount,
+            paymentLink
+          });
+          paymentResult.emailSent = emailSent;
+          if (emailSent) {
+            console.log(`Email de confirma\xE7\xE3o enviado com sucesso para ${userEmail}`);
+          } else {
+            console.error(`Falha ao enviar email de confirma\xE7\xE3o para ${userEmail}`);
+          }
+        } catch (emailError) {
+          console.error("Erro ao enviar email de confirma\xE7\xE3o:", emailError);
+          paymentResult.emailSent = false;
+          paymentResult.emailError = "Falha ao enviar email de confirma\xE7\xE3o";
+        }
+      }
+      res.status(200).json(paymentResult);
+    } catch (error) {
+      console.error("Erro ao processar pagamento:", error);
+      res.status(500).json({
+        error: error.message || "Falha ao processar pagamento."
+      });
+    }
+  });
+  app2.post("/api/payments/pix", async (req, res) => {
+    try {
+      if (!process.env.FOR4PAYMENTS_SECRET_KEY) {
+        console.error("ERRO: FOR4PAYMENTS_SECRET_KEY n\xE3o configurada");
+        return res.status(500).json({
+          error: "Servi\xE7o de pagamento n\xE3o configurado. Configure a chave de API For4Payments."
+        });
+      }
+      console.log("Dados de pagamento recebidos:", req.body);
+      const { name, email, cpf, phone } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Nome \xE9 obrigat\xF3rio." });
+      }
+      if (!cpf) {
+        return res.status(400).json({ error: "CPF \xE9 obrigat\xF3rio." });
+      }
+      const paymentAmount = 79.9;
+      const userEmail = email || `${name.toLowerCase().replace(/\s+/g, ".")}.${Date.now()}@mail.shopee.br`;
+      console.log(`Processando pagamento de R$ ${paymentAmount} para ${name}, CPF ${cpf}`);
+      const paymentResult = await paymentService.createPixPayment({
+        name,
+        email: userEmail,
+        cpf,
+        phone: phone || "",
+        amount: paymentAmount
+      });
+      console.log("Resultado do pagamento For4Payments:", paymentResult);
+      if (paymentResult.pixCode && paymentResult.pixQrCode) {
+        const { emailService: emailService2 } = await Promise.resolve().then(() => (init_email_service(), email_service_exports));
+        const formattedAmount = new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL"
+        }).format(paymentAmount);
+        const clientHost = getClientHost(req);
+        const paymentLink = `${clientHost}/payment?id=${paymentResult.id}&email=${encodeURIComponent(userEmail)}`;
+        console.log(`[EMAIL] Link de pagamento gerado: ${paymentLink}`);
+        try {
+          const emailSent = await emailService2.sendPaymentConfirmationEmail({
+            email: userEmail,
+            name,
+            pixCode: paymentResult.pixCode,
+            pixQrCode: paymentResult.pixQrCode,
+            amount: paymentAmount,
+            formattedAmount,
+            paymentLink
+          });
+          paymentResult.emailSent = emailSent;
+          if (emailSent) {
+            console.log(`Email de confirma\xE7\xE3o enviado com sucesso para ${userEmail}`);
+          } else {
+            console.error(`Falha ao enviar email de confirma\xE7\xE3o para ${userEmail}`);
+          }
+        } catch (emailError) {
+          console.error("Erro ao enviar email de confirma\xE7\xE3o:", emailError);
+          paymentResult.emailSent = false;
+          paymentResult.emailError = "Falha ao enviar email de confirma\xE7\xE3o";
+        }
+      }
+      res.status(200).json(paymentResult);
+    } catch (error) {
+      console.error("Erro ao processar pagamento PIX:", error);
+      res.status(500).json({
+        error: error.message || "Falha ao processar pagamento PIX."
+      });
+    }
+  });
+  app2.get("/api/payments/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "ID de pagamento n\xE3o fornecido" });
+      }
+      const { paymentService: paymentService2 } = await Promise.resolve().then(() => (init_payment(), payment_exports));
+      const paymentCache = global._paymentCache || {};
+      const paymentData = paymentCache[id];
+      if (!paymentData) {
+        return res.status(404).json({
+          error: "Pagamento n\xE3o encontrado. O link pode ter expirado."
+        });
+      }
+      const checkLiveStatus = req.query.check_status === "true";
+      if (checkLiveStatus && process.env.FOR4PAYMENTS_SECRET_KEY) {
+        try {
+          const { checkTransactionStatus: checkTransactionStatus2 } = await Promise.resolve().then(() => (init_transaction_monitor(), transaction_monitor_exports));
+          const transactionStatus = await checkTransactionStatus2(id);
+          if (transactionStatus) {
+            paymentData.status = transactionStatus.status;
+            paymentData.approvedAt = transactionStatus.approvedAt;
+            paymentData.rejectedAt = transactionStatus.rejectedAt;
+            if (transactionStatus.status === "APPROVED" && !paymentData.facebookReported) {
+              const { reportConversionToFacebook: reportConversionToFacebook2 } = await Promise.resolve().then(() => (init_transaction_monitor(), transaction_monitor_exports));
+              const reported = await reportConversionToFacebook2(transactionStatus);
+              if (reported) {
+                paymentData.facebookReported = true;
+                console.log(`[FACEBOOK] Convers\xE3o reportada com sucesso para o Facebook Pixel: ${id}`);
+              }
+            }
+          }
+        } catch (statusError) {
+          console.error("[MONITOR] Erro ao verificar status ao vivo da transa\xE7\xE3o:", statusError);
+        }
+      }
+      return res.json({
+        id: paymentData.id,
+        pixCode: paymentData.pixCode,
+        pixQrCode: paymentData.pixQrCode,
+        name: paymentData.name,
+        cpf: paymentData.cpf,
+        email: paymentData.email,
+        status: paymentData.status || "PENDING",
+        // Status padrão se não estiver presente
+        approvedAt: paymentData.approvedAt,
+        rejectedAt: paymentData.rejectedAt,
+        facebookReported: !!paymentData.facebookReported
+      });
+    } catch (error) {
+      console.error("Erro ao buscar informa\xE7\xF5es de pagamento:", error);
+      res.status(500).json({
+        error: "Erro ao buscar informa\xE7\xF5es de pagamento",
+        details: error.message
+      });
+    }
+  });
+  app2.post("/api/payments/treinamento", async (req, res) => {
+    try {
+      console.log("[DEBUG] Recebida requisi\xE7\xE3o para pagamento de treinamento");
+      if (!process.env.FOR4PAYMENTS_SECRET_KEY) {
+        console.error("ERRO: FOR4PAYMENTS_SECRET_KEY n\xE3o configurada");
+        return res.status(500).json({
+          error: "Servi\xE7o de pagamento n\xE3o configurado. Configure a chave de API For4Payments."
+        });
+      }
+      console.log("[DEBUG] Dados de pagamento de treinamento recebidos:", req.body);
+      const { name, email, cpf, phone, items } = req.body;
+      if (!name) {
+        return res.status(400).json({ error: "Nome \xE9 obrigat\xF3rio." });
+      }
+      if (!cpf) {
+        return res.status(400).json({ error: "CPF \xE9 obrigat\xF3rio." });
+      }
+      const paymentAmount = 9700 / 100;
+      const userEmail = email || `${name.toLowerCase().replace(/\s+/g, ".")}.${Date.now()}@mail.shopee.br`;
+      console.log(`Processando pagamento de treinamento de R$ ${paymentAmount} para ${name}, CPF ${cpf}`);
+      console.log(`[DEBUG] Enviando para For4Payments: nome=${name}, email=${userEmail}, cpf=${cpf}, valor=${paymentAmount}`);
+      const paymentParams = {
+        name,
+        email: userEmail,
+        cpf,
+        phone: phone || "",
+        amount: paymentAmount,
+        items: items || [{
+          title: "Crach\xE1 Shopee + Treinamento Exclusivo",
+          quantity: 1,
+          unitPrice: 9700,
+          tangible: false
+        }]
+      };
+      console.log("[DEBUG] Par\xE2metros completos:", JSON.stringify(paymentParams));
+      const paymentResult = await paymentService.createPixPayment(paymentParams);
+      console.log("Resultado do pagamento de treinamento For4Payments:", paymentResult);
+      if (paymentResult.pixCode && paymentResult.pixQrCode) {
+        const { emailService: emailService2 } = await Promise.resolve().then(() => (init_email_service(), email_service_exports));
+        const formattedAmount = new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL"
+        }).format(paymentAmount);
+        const clientHost = getClientHost(req);
+        const paymentLink = `${clientHost}/payment?id=${paymentResult.id}&email=${encodeURIComponent(userEmail)}`;
+        console.log(`[EMAIL] Link de pagamento de treinamento gerado: ${paymentLink}`);
+        try {
+          const emailSent = await emailService2.sendPaymentConfirmationEmail({
+            email: userEmail,
+            name,
+            pixCode: paymentResult.pixCode,
+            pixQrCode: paymentResult.pixQrCode,
+            amount: paymentAmount,
+            formattedAmount,
+            paymentLink
+          });
+          paymentResult.emailSent = emailSent;
+          if (emailSent) {
+            console.log(`Email de confirma\xE7\xE3o de treinamento enviado com sucesso para ${userEmail}`);
+          } else {
+            console.error(`Falha ao enviar email de confirma\xE7\xE3o de treinamento para ${userEmail}`);
+          }
+        } catch (emailError) {
+          console.error("Erro ao enviar email de confirma\xE7\xE3o de treinamento:", emailError);
+          paymentResult.emailSent = false;
+          paymentResult.emailError = "Falha ao enviar email de confirma\xE7\xE3o";
+        }
+      }
+      res.status(200).json(paymentResult);
+    } catch (error) {
+      console.error("Erro ao processar pagamento de treinamento:", error);
+      res.status(500).json({
+        error: error.message || "Falha ao processar pagamento de treinamento."
+      });
+    }
+  });
+  app2.post("/api/payments/:id/check-status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "ID de pagamento n\xE3o fornecido" });
+      }
+      if (!process.env.FOR4PAYMENTS_SECRET_KEY) {
+        return res.status(500).json({ error: "Chave de API For4Payments n\xE3o configurada" });
+      }
+      const { processTransaction: processTransaction2 } = await Promise.resolve().then(() => (init_transaction_monitor(), transaction_monitor_exports));
+      const result = await processTransaction2(id);
+      if (result) {
+        const paymentCache = global._paymentCache || {};
+        if (paymentCache[id]) {
+          paymentCache[id].facebookReported = true;
+          paymentCache[id].status = "APPROVED";
+        }
+      }
+      return res.json({
+        success: true,
+        processed: result,
+        message: result ? "Transa\xE7\xE3o aprovada e reportada ao Facebook Pixel" : "Transa\xE7\xE3o verificada, mas n\xE3o foi necess\xE1rio reportar"
+      });
+    } catch (error) {
+      console.error("Erro ao verificar status do pagamento:", error);
+      res.status(500).json({
+        error: "Erro ao verificar status do pagamento",
+        details: error.message
+      });
+    }
+  });
+  app2.post("/api/payments/pix-python", async (req, res) => {
+    try {
+      const { nome, email, cpf, telefone } = req.body;
+      if (!nome || !cpf) {
+        return res.status(400).json({
+          error: "Dados incompletos. Nome e CPF s\xE3o obrigat\xF3rios."
+        });
+      }
+      if (!process.env.FOR4PAYMENTS_SECRET_KEY) {
+        console.error("FOR4PAYMENTS_SECRET_KEY n\xE3o configurada");
+        return res.status(500).json({
+          error: "FOR4PAYMENTS_SECRET_KEY n\xE3o configurada. Configure a chave de API For4Payments."
+        });
+      }
+      console.log("Processando pagamento via API For4Payments...");
+      const userEmail = email || `${nome.toLowerCase().replace(/\s+/g, ".")}.${Date.now()}@mail.shopee.br`;
+      const paymentAmount = 79.9;
+      const paymentResult = await paymentService.createPixPayment({
+        name: nome,
+        email: userEmail,
+        cpf,
+        phone: telefone || "",
+        amount: paymentAmount
+      });
+      if (!global._paymentCache) {
+        global._paymentCache = {};
+      }
+      const now = /* @__PURE__ */ new Date();
+      Object.keys(global._paymentCache || {}).forEach((key) => {
+        const item = global._paymentCache?.[key];
+        if (item && item.timestamp) {
+          const itemTime = new Date(item.timestamp);
+          const diffHours = Math.abs(now.getTime() - itemTime.getTime()) / 36e5;
+          if (diffHours > 1) {
+            console.log(`[CACHE] Removendo item expirado do cache: ${key}`);
+            delete global._paymentCache?.[key];
+          }
+        }
+      });
+      global._paymentCache[paymentResult.id] = {
+        ...paymentResult,
+        name: nome,
+        cpf,
+        email: userEmail,
+        amount: paymentAmount,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      console.log(`[CACHE] Pagamento armazenado no cache com ID: ${paymentResult.id}`);
+      console.log(`[CACHE] Total de itens no cache: ${Object.keys(global._paymentCache || {}).length}`);
+      if (paymentResult.pixCode && paymentResult.pixQrCode) {
+        const { emailService: emailService2 } = await Promise.resolve().then(() => (init_email_service(), email_service_exports));
+        const formattedAmount = new Intl.NumberFormat("pt-BR", {
+          style: "currency",
+          currency: "BRL"
+        }).format(paymentAmount);
+        const clientHost = getClientHost(req);
+        const paymentLink = `${clientHost}/payment?id=${paymentResult.id}&email=${encodeURIComponent(userEmail)}`;
+        try {
+          const emailSent = await emailService2.sendPaymentConfirmationEmail({
+            email: userEmail,
+            name: nome,
+            pixCode: paymentResult.pixCode,
+            pixQrCode: paymentResult.pixQrCode,
+            amount: paymentAmount,
+            formattedAmount,
+            paymentLink
+          });
+          paymentResult.emailSent = emailSent;
+          if (emailSent) {
+            console.log(`Email de confirma\xE7\xE3o enviado com sucesso para ${userEmail}`);
+          } else {
+            console.error(`Falha ao enviar email de confirma\xE7\xE3o para ${userEmail}`);
+          }
+        } catch (emailError) {
+          console.error("Erro ao enviar email de confirma\xE7\xE3o:", emailError);
+          paymentResult.emailSent = false;
+          paymentResult.emailError = "Falha ao enviar email de confirma\xE7\xE3o";
+        }
+      }
+      res.status(200).json(paymentResult);
+    } catch (error) {
+      console.error("Erro ao processar pagamento PIX:", error);
+      res.status(500).json({
+        error: error.message || "Falha ao processar pagamento PIX."
+      });
+    }
+  });
+  app2.get("/api/admin/ips", async (req, res) => {
+    try {
+      const bannedIps2 = await storage.getAllBannedIps();
+      res.json(bannedIps2);
+    } catch (error) {
+      console.error("Erro ao listar IPs banidos:", error);
+      res.status(500).json({ error: "Falha ao listar IPs banidos" });
+    }
+  });
+  app2.get("/api/admin/ips/:ip", async (req, res) => {
+    try {
+      const ip = req.params.ip;
+      const bannedIp = await storage.getBannedIp(ip);
+      if (!bannedIp) {
+        return res.status(404).json({ error: "IP n\xE3o encontrado" });
+      }
+      res.json(bannedIp);
+    } catch (error) {
+      console.error("Erro ao buscar detalhes do IP:", error);
+      res.status(500).json({ error: "Falha ao buscar detalhes do IP" });
+    }
+  });
+  app2.patch("/api/admin/ips/:ip", async (req, res) => {
+    try {
+      const ip = req.params.ip;
+      const { isBanned } = req.body;
+      if (typeof isBanned !== "boolean") {
+        return res.status(400).json({ error: "O campo isBanned deve ser um booleano" });
+      }
+      const existingIp = await storage.getBannedIp(ip);
+      if (!existingIp) {
+        const newBannedIp = await storage.createBannedIp({
+          ip,
+          isBanned,
+          reason: `IP ${isBanned ? "banido" : "permitido"} manualmente por administrador`,
+          userAgent: "",
+          browserInfo: "",
+          device: "N/A",
+          platform: "N/A",
+          location: await getIpLocation(ip)
+        });
+        return res.status(201).json(newBannedIp);
+      }
+      const updatedIp = await storage.updateBannedIpStatus(ip, isBanned);
+      if (!updatedIp) {
+        return res.status(500).json({ error: "Falha ao atualizar status do IP" });
+      }
+      res.json(updatedIp);
+    } catch (error) {
+      console.error("Erro ao atualizar status do IP:", error);
+      res.status(500).json({ error: "Falha ao atualizar status do IP" });
+    }
+  });
+  app2.get("/api/admin/domains", async (req, res) => {
+    try {
+      const domains = await storage.getAllAllowedDomains();
+      res.json(domains);
+    } catch (error) {
+      console.error("Erro ao listar dom\xEDnios permitidos:", error);
+      res.status(500).json({ error: "Falha ao listar dom\xEDnios permitidos" });
+    }
+  });
+  app2.post("/api/admin/domains", async (req, res) => {
+    try {
+      const { domain, isActive = true } = req.body;
+      if (!domain) {
+        return res.status(400).json({ error: "O campo domain \xE9 obrigat\xF3rio" });
+      }
+      const existingDomain = await storage.getAllowedDomain(domain);
+      if (existingDomain) {
+        const updatedDomain = await storage.updateAllowedDomainStatus(domain, isActive);
+        if (!updatedDomain) {
+          return res.status(500).json({ error: "Falha ao atualizar status do dom\xEDnio" });
+        }
+        return res.json(updatedDomain);
+      }
+      const newDomain = await storage.createAllowedDomain({
+        domain,
+        isActive
+      });
+      res.status(201).json(newDomain);
+    } catch (error) {
+      console.error("Erro ao adicionar dom\xEDnio permitido:", error);
+      res.status(500).json({ error: "Falha ao adicionar dom\xEDnio permitido" });
+    }
+  });
+  app2.patch("/api/admin/domains/:domain", async (req, res) => {
+    try {
+      const domain = req.params.domain;
+      const { isActive } = req.body;
+      if (typeof isActive !== "boolean") {
+        return res.status(400).json({ error: "O campo isActive deve ser um booleano" });
+      }
+      const existingDomain = await storage.getAllowedDomain(domain);
+      if (!existingDomain) {
+        return res.status(404).json({ error: "Dom\xEDnio n\xE3o encontrado" });
+      }
+      const updatedDomain = await storage.updateAllowedDomainStatus(domain, isActive);
+      if (!updatedDomain) {
+        return res.status(500).json({ error: "Falha ao atualizar status do dom\xEDnio" });
+      }
+      res.json(updatedDomain);
+    } catch (error) {
+      console.error("Erro ao atualizar status do dom\xEDnio:", error);
+      res.status(500).json({ error: "Falha ao atualizar status do dom\xEDnio" });
+    }
+  });
+  app2.get("/ips/stats", async (req, res) => {
+    try {
+      const bannedIps2 = await storage.getAllBannedIps();
+      const totalBannedIps = bannedIps2.filter((ip) => ip.isBanned).length;
+      const totalAllowedIps = bannedIps2.filter((ip) => !ip.isBanned).length;
+      const deviceStats3 = {};
+      bannedIps2.forEach((ip) => {
+        const device = ip.device || "Desconhecido";
+        deviceStats3[device] = (deviceStats3[device] || 0) + 1;
+      });
+      const browserStats = {};
+      bannedIps2.forEach((ip) => {
+        const browser = ip.browserInfo?.split(" ")[0] || "Desconhecido";
+        browserStats[browser] = (browserStats[browser] || 0) + 1;
+      });
+      const platformStats = {};
+      bannedIps2.forEach((ip) => {
+        let platform = ip.platform || "Desconhecida";
+        if (platform.startsWith("Windows")) {
+          platform = "Windows";
+        }
+        if (platform.startsWith("macOS")) {
+          platform = "macOS";
+        }
+        platformStats[platform] = (platformStats[platform] || 0) + 1;
+      });
+      res.json({
+        totalIpsTracked: bannedIps2.length,
+        totalBannedIps,
+        totalAllowedIps,
+        deviceStats: deviceStats3,
+        browserStats,
+        platformStats,
+        lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    } catch (error) {
+      console.error("Erro ao gerar estat\xEDsticas de IPs:", error);
+      res.status(500).json({ error: "Falha ao gerar estat\xEDsticas de IPs" });
+    }
+  });
+  const httpServer = createServer(app2);
+  const wss = new WebSocketServer({
+    server: httpServer,
+    path: "/ws",
+    // Permitir conexões de qualquer origem em produção
+    verifyClient: (info, done) => {
+      const origin = info.origin || "";
+      console.log(`Conex\xE3o WebSocket tentada da origem: ${origin}`);
+      done(true);
+    }
+  });
+  const connectedClients2 = [];
+  let accessSources2 = [
+    { source: "WhatsApp", count: 0 },
+    { source: "Facebook", count: 0 },
+    { source: "Instagram", count: 0 },
+    { source: "Google", count: 0 },
+    { source: "Pesquisa Org\xE2nica", count: 0 },
+    { source: "Link Direto", count: 0 },
+    { source: "Outros", count: 0 }
+  ];
+  let deviceStats2 = [
+    { type: "Smartphone", count: 0 },
+    { type: "Tablet", count: 0 },
+    { type: "Desktop (Permitido)", count: 0 },
+    { type: "Desktop (Bloqueado)", count: 0 },
+    { type: "WhatsApp Web", count: 0 }
+  ];
+  let onlineUsers = 0;
+  let totalVisits = 0;
+  async function getDashboardStats2() {
+    try {
+      const bannedIps2 = await storage.getAllBannedIps();
+      const allowedDomains2 = await storage.getAllAllowedDomains();
+      const stats = {
+        onlineUsers,
+        totalVisits,
+        bannedIPs: bannedIps2.filter((ip) => ip.isBanned).length,
+        allowedDomains: allowedDomains2.filter((domain) => domain.isActive).length
+      };
+      return {
+        stats,
+        bannedIPs: bannedIps2.filter((ip) => ip.isBanned).sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()).slice(0, 50).map((ip) => ({
+          ip: ip.ip,
+          userAgent: ip.userAgent || "Desconhecido",
+          device: ip.device || "Desconhecido",
+          browserInfo: ip.browserInfo || "Desconhecido",
+          platform: ip.platform || "Desconhecido",
+          location: ip.location || "Desconhecido",
+          reason: ip.reason || "Acesso bloqueado",
+          timestamp: ip.updatedAt?.toISOString() || (/* @__PURE__ */ new Date()).toISOString()
+        })),
+        accessSources: accessSources2,
+        deviceStats: deviceStats2
+      };
+    } catch (error) {
+      console.error("Erro ao obter estat\xEDsticas do dashboard:", error);
+      return {
+        stats: { onlineUsers: 0, totalVisits: 0, bannedIPs: 0, allowedDomains: 0 },
+        bannedIPs: [],
+        accessSources: accessSources2,
+        deviceStats: deviceStats2
+      };
+    }
+  }
+  function broadcastToAll2(message) {
+    const messageString = JSON.stringify(message);
+    connectedClients2.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(messageString);
+      }
+    });
+  }
+  wss.on("connection", async (ws2) => {
+    console.log("Nova conex\xE3o WebSocket estabelecida");
+    connectedClients2.push(ws2);
+    onlineUsers += 1;
+    totalVisits += 1;
+    broadcastToAll2({
+      type: "user_connected",
+      count: onlineUsers
+    });
+    try {
+      const data = await getDashboardStats2();
+      ws2.send(JSON.stringify({
+        type: "initial_data",
+        ...data
+      }));
+    } catch (error) {
+      console.error("Erro ao enviar dados iniciais:", error);
+    }
+    ws2.on("message", async (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        if (data.type === "get_dashboard_data") {
+          const dashboardData = await getDashboardStats2();
+          ws2.send(JSON.stringify({
+            type: "dashboard_stats",
+            stats: dashboardData.stats
+          }));
+          ws2.send(JSON.stringify({
+            type: "banned_ips",
+            ips: dashboardData.bannedIPs
+          }));
+          ws2.send(JSON.stringify({
+            type: "access_sources",
+            sources: dashboardData.accessSources
+          }));
+          ws2.send(JSON.stringify({
+            type: "device_stats",
+            devices: dashboardData.deviceStats
+          }));
+        }
+      } catch (error) {
+        console.error("Erro ao processar mensagem WebSocket:", error);
+      }
+    });
+    ws2.on("close", () => {
+      const index = connectedClients2.indexOf(ws2);
+      if (index !== -1) {
+        connectedClients2.splice(index, 1);
+      }
+      onlineUsers = Math.max(0, onlineUsers - 1);
+      broadcastToAll2({
+        type: "user_connected",
+        count: onlineUsers
+      });
+      console.log("Conex\xE3o WebSocket fechada");
+    });
+  });
+  (async () => {
+    try {
+      const bannedIps2 = await storage.getAllBannedIps();
+      const deviceCounts = {};
+      bannedIps2.forEach((ip) => {
+        const device = ip.device || "Desconhecido";
+        if (device.includes("WhatsApp Web")) {
+          deviceCounts["WhatsApp Web"] = (deviceCounts["WhatsApp Web"] || 0) + 1;
+        } else if (device.includes("Desktop")) {
+          if (ip.isBanned) {
+            deviceCounts["Desktop (Bloqueado)"] = (deviceCounts["Desktop (Bloqueado)"] || 0) + 1;
+          } else {
+            deviceCounts["Desktop (Permitido)"] = (deviceCounts["Desktop (Permitido)"] || 0) + 1;
+          }
+        } else if (device.includes("Tablet")) {
+          deviceCounts["Tablet"] = (deviceCounts["Tablet"] || 0) + 1;
+        } else {
+          deviceCounts["Smartphone"] = (deviceCounts["Smartphone"] || 0) + 1;
+        }
+      });
+      deviceStats2 = deviceStats2.map((stat) => ({
+        ...stat,
+        count: deviceCounts[stat.type] || 0
+      }));
+      const sourceCounts = {};
+      bannedIps2.forEach((ip) => {
+        let source = "Outros";
+        const referer = ip.referer || "";
+        if (referer.includes("whatsapp")) {
+          source = "WhatsApp";
+        } else if (referer.includes("facebook") || referer.includes("fb.com")) {
+          source = "Facebook";
+        } else if (referer.includes("instagram")) {
+          source = "Instagram";
+        } else if (referer.includes("google")) {
+          if (referer.includes("ads") || referer.includes("adwords")) {
+            source = "Google";
+          } else {
+            source = "Pesquisa Org\xE2nica";
+          }
+        } else if (!referer) {
+          source = "Link Direto";
+        }
+        sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+      });
+      accessSources2 = accessSources2.map((source) => ({
+        ...source,
+        count: sourceCounts[source.source] || 0
+      }));
+      console.log("Estat\xEDsticas iniciais carregadas para o dashboard");
+    } catch (error) {
+      console.error("Erro ao carregar estat\xEDsticas iniciais:", error);
+    }
+  })();
+  return httpServer;
+}
+
+// server/vite.ts
+import express from "express";
+import fs from "fs";
+import path2 from "path";
+import { createServer as createViteServer, createLogger } from "vite";
+
+// vite.config.ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+var vite_config_default = defineConfig({
+  plugins: [
+    react(),
+    runtimeErrorOverlay(),
+    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
+      await import("@replit/vite-plugin-cartographer").then(
+        (m) => m.cartographer()
+      )
+    ] : []
+  ],
+  resolve: {
+    alias: {
+      "@": path.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path.resolve(import.meta.dirname, "shared"),
+      "@assets": path.resolve(import.meta.dirname, "attached_assets")
+    }
+  },
+  root: path.resolve(import.meta.dirname, "client"),
+  build: {
+    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    emptyOutDir: true
+  }
+});
+
+// server/vite.ts
+import { nanoid } from "nanoid";
+var viteLogger = createLogger();
+function log(message, source = "express") {
+  const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
+async function setupVite(app2, server) {
+  const serverOptions = {
+    middlewareMode: true,
+    hmr: { server },
+    allowedHosts: true
+  };
+  const vite = await createViteServer({
+    ...vite_config_default,
+    configFile: false,
+    customLogger: {
+      ...viteLogger,
+      error: (msg, options) => {
+        viteLogger.error(msg, options);
+        process.exit(1);
+      }
+    },
+    server: serverOptions,
+    appType: "custom"
+  });
+  app2.use(vite.middlewares);
+  app2.use("*", async (req, res, next) => {
+    const url = req.originalUrl;
+    try {
+      const clientTemplate = path2.resolve(
+        import.meta.dirname,
+        "..",
+        "client",
+        "index.html"
+      );
+      let template = await fs.promises.readFile(clientTemplate, "utf-8");
+      template = template.replace(
+        `src="/src/main.tsx"`,
+        `src="/src/main.tsx?v=${nanoid()}"`
+      );
+      const page = await vite.transformIndexHtml(url, template);
+      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+    } catch (e) {
+      vite.ssrFixStacktrace(e);
+      next(e);
+    }
+  });
+}
+function serveStatic(app2) {
+  const distPath = path2.resolve(import.meta.dirname, "public");
+  if (!fs.existsSync(distPath)) {
+    throw new Error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`
+    );
+  }
+  app2.use(express.static(distPath));
+  app2.use("*", (_req, res) => {
+    res.sendFile(path2.resolve(distPath, "index.html"));
+  });
+}
+
+// server/static-middleware.ts
+import express2 from "express";
+import path3 from "path";
+import fs2 from "fs";
+function setupStaticMiddleware(app2) {
+  const distPublicPath = path3.join(process.cwd(), "dist", "public");
+  const assetsPath = path3.join(distPublicPath, "assets");
+  console.log(`[static-middleware] Serving static files from: ${distPublicPath}`);
+  console.log(`[static-middleware] Assets path: ${assetsPath}`);
+  if (fs2.existsSync(distPublicPath)) {
+    console.log("[static-middleware] dist/public directory exists");
+    if (fs2.existsSync(assetsPath)) {
+      console.log("[static-middleware] assets directory exists");
+      const files = fs2.readdirSync(assetsPath);
+      console.log(`[static-middleware] Files in assets directory: ${JSON.stringify(files)}`);
+    }
+  }
+  app2.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+    if (req.url.startsWith("/assets/")) {
+      console.log(`[static-middleware] Asset request: ${req.url}`);
+      const assetPath = path3.join(assetsPath, req.url.substring(8));
+      if (fs2.existsSync(assetPath)) {
+        console.log(`[static-middleware] Asset exists: ${assetPath}`);
+        res.setHeader("Cache-Control", "public, max-age=31536000");
+      }
+    }
+    next();
+  });
+  app2.use("/assets", express2.static(assetsPath, {
+    maxAge: "1y",
+    etag: true
+  }));
+}
+
+// server/cors-config.ts
+import cors from "cors";
+function setupCors(app2) {
+  if (process.env.NODE_ENV === "production") {
+    console.log("[express] Configurando CORS para produ\xE7\xE3o - permitindo todas as origens");
+    app2.use(cors({
+      origin: "*",
+      // Permitir todas as origens
+      methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      credentials: false,
+      // Importante: não enviar credenciais
+      preflightContinue: false,
+      optionsSuccessStatus: 204,
+      maxAge: 86400
+      // Tempo de cache para preflight: 24 horas
+    }));
+    app2.use((req, res, next) => {
+      res.header("Access-Control-Allow-Origin", "*");
+      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+      if (req.method === "OPTIONS") {
+        return res.status(204).end();
+      }
+      next();
+    });
+  } else {
+    console.log("[express] Configurando CORS para desenvolvimento");
+    app2.use(cors());
+  }
+}
+
+// server/index.ts
+import path4 from "path";
+import fs3 from "fs";
+var app = express3();
+setupCors(app);
+app.use(express3.json({ limit: "10mb" }));
+app.use(express3.urlencoded({ extended: false, limit: "10mb" }));
+var neverBanIPs2 = ["201.87.251.220"];
+app.use(async (req, res, next) => {
+  try {
+    if (req.path.startsWith("/api/admin/report-desktop-access") || req.path.startsWith("/api/admin/register-device") || req.path.startsWith("/api/admin/check-ip-banned")) {
+      return next();
+    }
+    const ip = req.ip || req.socket.remoteAddress || "0.0.0.0";
+    const hostname = req.hostname || "";
+    if (hostname.includes("localhost") || hostname.includes("127.0.0.1") || hostname.includes("replit") || process.env.NODE_ENV === "development") {
+      return next();
+    }
+    const ipBaseWithoutProxy = ip.split(",")[0].trim();
+    if (neverBanIPs2.some((whitelistedIP) => ipBaseWithoutProxy.includes(whitelistedIP))) {
+      return next();
+    }
+    const bannedIp = await storage.getBannedIp(ip);
+    if (bannedIp?.isBanned) {
+      console.log(`[BLOQUEIO-IP] Servidor bloqueando acesso do IP banido: ${ip}`);
+      if (req.path.startsWith("/api/")) {
+        return res.status(403).json({
+          error: "IP_BLOCKED",
+          message: "Acesso bloqueado permanentemente"
+        });
+      }
+      res.set("Content-Type", "text/html");
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <script>window.location.replace("about:blank");</script>
+        </head>
+        <body></body>
+        </html>
+      `);
+      return;
+    }
+    next();
+  } catch (error) {
+    console.error("[MIDDLEWARE] Erro ao verificar IP banido:", error);
+    next();
+  }
+});
+if (process.env.NODE_ENV === "production") {
+  console.log("[express] Running in production mode");
+  setupStaticMiddleware(app);
+  const distPublicPath = path4.join(process.cwd(), "dist", "public");
+  console.log(`[express] Serving static files from: ${distPublicPath}`);
+  const assetsPath = path4.join(distPublicPath, "assets");
+  if (fs3.existsSync(assetsPath)) {
+    console.log(`[express] Assets directory exists: ${assetsPath}`);
+    app.use("/assets", express3.static(assetsPath, {
+      maxAge: "1y",
+      etag: true
+    }));
+  }
+  app.use(express3.static(distPublicPath, {
+    maxAge: "1d",
+    etag: true
+  }));
+  app.get("/", (req, res) => {
+    console.log("[express] Serving index.html");
+    res.sendFile(path4.join(distPublicPath, "index.html"));
+  });
+}
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+  }
+  next();
+});
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path5 = req.path;
+  let capturedJsonResponse = void 0;
+  const originalResJson = res.json;
+  res.json = function(bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (path5.startsWith("/api")) {
+      let logLine = `${req.method} ${path5} ${res.statusCode} in ${duration}ms`;
+      if (capturedJsonResponse) {
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      }
+      if (logLine.length > 80) {
+        logLine = logLine.slice(0, 79) + "\u2026";
+      }
+      log(logLine);
+    }
+  });
+  next();
+});
+(async () => {
+  const server = await registerRoutes(app);
+  app.use((err, _req, res, _next) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+    res.status(status).json({ message });
+    throw err;
+  });
+  if (app.get("env") === "development") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
+  const port = process.env.PORT || 5e3;
+  server.listen({
+    port: Number(port),
+    host: "0.0.0.0",
+    reusePort: true
+  }, () => {
+    log(`serving on port ${port}`);
+  });
+})();

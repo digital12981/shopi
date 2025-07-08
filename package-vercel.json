@@ -1,0 +1,10 @@
+{
+  "name": "shopee-delivery-partners-vercel",
+  "version": "1.0.0",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "build-vercel": "npm run build && cp -r dist/* public/"
+  }
+}

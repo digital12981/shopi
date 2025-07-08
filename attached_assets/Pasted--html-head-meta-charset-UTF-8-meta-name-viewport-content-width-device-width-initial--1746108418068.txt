@@ -1,0 +1,65 @@
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+  <title>Shopee Crachá</title>
+</head>
+<body class="bg-gray-100 flex justify-center items-center h-screen">
+  <div class="relative">
+    <div class="absolute -top-9 left-1/2 transform -translate-x-1/2">
+      <img src="https://i.ibb.co/7dsrFY5q/Entregador-Shopee-2-1-2-removebg-preview-2-1.png" alt="Imagem de um crachá de entregador Shopee com design oficial, sem fundo, com um layout atualizado" class="w-16 h-16 filter-none">
+    </div>
+    <div class="bg-white rounded-lg shadow-lg w-80 p-4 pt-8">
+      <div class="flex items-center mb-4 justify-start">
+        <img src="https://d290ny10omyv12.cloudfront.net/images/shopee-large.png" alt="Shopee Logo" class="w-40 h-auto -ml-[30px]">
+      </div>
+      <div class="flex">
+        <div id="imageContainer" class="w-[100px] h-[120px] bg-gray-200 rounded mr-4 flex items-center justify-center">
+          <img id="profileImage" src="" alt="Foto de perfil do entregador" class="w-full h-full object-cover rounded hidden">
+          <i class="fas fa-user text-gray-400 text-4xl"></i>
+        </div>
+        <div class="flex-grow h-[120px] flex flex-col justify-between">
+          <h2 class="text-xs font-bold">Entregador Shopee</h2>
+          <p id="entregadorNome" class="text-[10px] text-gray-700 uppercase">{{NOME_ENTREGADOR}}</p>
+          <hr class="border-gray-300">
+          <p id="entregadorCPF" class="text-[10px] text-gray-700">{{CPF_ENTREGADOR}}</p>
+          <hr class="border-gray-300">
+          <p id="entregadorCidade" class="text-[10px] text-gray-700 uppercase">{{CIDADE_ENTREGADOR}}</p>
+          <hr class="border-gray-300">
+          <div class="flex items-center text-red-500">
+            <i class="fas fa-times-circle mr-1 text-xs"></i>
+            <span class="font-bold text-xs">NÃO ATIVO</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Função para atualizar os dados do crachá
+    function atualizarCracha(nome, cpf, cidade, imagemUrl) {
+      document.getElementById('entregadorNome').textContent = nome.toUpperCase();
+      document.getElementById('entregadorCPF').textContent = cpf;
+      document.getElementById('entregadorCidade').textContent = cidade.toUpperCase();
+      
+      const profileImage = document.getElementById('profileImage');
+      const imageContainer = document.getElementById('imageContainer');
+      const placeholderIcon = imageContainer.querySelector('i');
+
+      if (imagemUrl) {
+        profileImage.src = imagemUrl;
+        profileImage.classList.remove('hidden');
+        placeholderIcon.classList.add('hidden');
+      } else {
+        profileImage.classList.add('hidden');
+        placeholderIcon.classList.remove('hidden');
+      }
+    }
+
+    // Exemplo de uso (você pode chamar esta função com os dados do seu cliente)
+    // atualizarCracha('João Silva', '123.456.789-00', 'São Paulo - SP', '');
+  </script>
+</body>
+</html>

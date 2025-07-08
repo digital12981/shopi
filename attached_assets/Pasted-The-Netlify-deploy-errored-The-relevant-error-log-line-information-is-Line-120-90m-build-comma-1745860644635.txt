@@ -1,0 +1,68 @@
+The Netlify deploy errored. The relevant error log line information is:
+
+Line 120: [90m(build.command completed in 5.9s)[39m
+Line 121: [96m[1m​[22m[39m
+Line 122: [96m[1mFunctions bundling                                            [22m[39m
+Line 123: [96m[1m────────────────────────────────────────────────────────────────[22m[39m
+Line 124: ​
+Line 125: Packaging Functions from [36mnetlify/functions[39m directory:
+Line 126:  - vehicle-proxy.js
+Line 127: ​
+Line 128: ​
+Line 129: [90m(Functions bundling completed in 266ms)[39m
+Line 130: Failed during stage 'building site': Build script returned non-zero exit code: 2
+Line 131: [96m[1m​[22m[39m
+Line 132: [96m[1mScanning for secrets in code and build output.                [22m[39m
+Line 133: [96m[1m────────────────────────────────────────────────────────────────[22m[39m
+Line 134: ​
+Line 135: [31m[1m​[22m[39m
+Line 136: [31m[1m❯ Scanning complete. 210 file(s) scanned. Secrets scanning found 6 instance(s) of secrets in build output or repo code.
+Line 137: [31m[1m​[22m[39m
+Line 138: [91mSecret env var "VITE_FOR4PAYMENTS_SECRET_KEY"'s value detected:[39m
+[91m  found value at line 192 in dist/public/assets/i
+Line 139: [91m  found value at line 192 in dist/public/assets/index-Dc53ctfa.js[39m
+Line 140: [91m  found value at line 203 in dist/public/assets/index-Dc53ctfa.js[39m
+Line 142: [91m  found value at line 291 in dist/public/assets/index-Dc53ctfa.js[39m
+Line 143: [91m  found value at line 291 in dist/public/assets/index-Dc53ctfa.js[39m
+Line 144: [91m​[39m
+Line 145: [91mTo prevent exposing secrets, the build will fail until these secret values are not found in build output or repo files.[39
+Line 146: [91mIf these are expected, use SECRETS_SCAN_OMIT_PATHS, SECRETS_SCAN_OMIT_KEYS, or SECRETS_SCAN_ENABLED to prevent detecting.[
+Line 147: [91mFor more information on secrets scanning, see the Netlify Docs: https://ntl.fyi/configure-secrets-scanning[39m
+Line 148: [91m[1m​[22m[39m
+Line 149: [91m[1mSecrets scanning detected secrets in files during build.      [22m[39m
+Line 150: [91m[1m────────────────────────────────────────────────────────────────[22m[39m
+Line 151: ​
+Line 152:   [31m[1mError message[22m[39m
+Line 153:   Secrets scanning found secrets in build.
+Line 154: ​
+Line 155:   [31m[1mResolved config[22m[39m
+Line 156:   build:
+Line 157:     command: ./netlify.build.sh
+Line 158:     commandOrigin: config
+Line 159:     environment:
+Line 160:       - FOR4PAYMENTS_SECRET_KEY
+Line 161:       - VEHICLE_API_KEY
+Line 162:       - VITE_FOR4PAYMENTS_SECRET_KEY
+Line 163:       - NODE_VERSION
+Line 164:     publish: /opt/build/repo/dist/public
+Line 165:     publishOrigin: config
+Line 166:   functionsDirectory: /opt/build/repo/netlify/functions
+Line 167:   headers:
+Line 168:     - for: /assets/*
+      values:
+        Access-Control-Allow-Origin: '*'
+        Cache-Control: public, max-age=31536000
+    
+Line 169: Build failed due to a user error: Build script returned non-zero exit code: 2
+Line 170: Failing build: Failed to build site
+Line 171: Finished processing build request in 27.936s
+
+Netlify has analyzed the error and provided the following guidance:
+
+### Diagnosis:
+The build failed due to secrets scanning detecting secrets in the build output or repository files.
+
+### Solution:
+To resolve this issue, you need to remove the detected secret values from the specified files in the build output (`dist/public/assets/...`) or from the repository files. Ensure the secret values are not exposed in your build output.
+
+If these secrets are expected and necessary for your application, you can use `SECRETS_SCAN_OMIT_PATHS`, `SECRETS_SCAN_OMIT_KEYS`, or `SECRETS_SCAN_ENABLED` to prevent the scanning tool from detecting them. For more information on secrets scanning and how to configure it, refer to the [Netlify Docs on secrets scanning](https://ntl.fyi/configure-secrets-scanning).
