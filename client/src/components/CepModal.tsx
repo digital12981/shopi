@@ -125,7 +125,7 @@ const CepModal: React.FC<CepModalProps> = ({ isOpen, onClose, onConfirm }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black bg-opacity-95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black bg-opacity-20 backdrop-blur-lg">
       <div className="flex min-h-screen items-center justify-center p-4">
         <div 
           className="relative mx-auto max-w-md w-full bg-white rounded-lg p-8 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-300"
