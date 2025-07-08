@@ -18,6 +18,7 @@ import Selfie from "@/pages/Selfie";
 import { useAppContext } from "@/contexts/AppContext";
 import { useDesktopProtection } from "@/hooks/use-desktop-protection";
 import FacebookPixelInitializer from "@/components/FacebookPixelInitializer";
+import WhatsAppDetector from "@/components/WhatsAppDetector";
 
 function Router() {
   return (
@@ -49,7 +50,9 @@ function App() {
     <TooltipProvider>
       <Toaster />
       <FacebookPixelInitializer />
-      <Router />
+      <WhatsAppDetector>
+        <Router />
+      </WhatsAppDetector>
     </TooltipProvider>
   );
 }
