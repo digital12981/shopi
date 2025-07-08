@@ -10,15 +10,22 @@ O erro `require is not defined in ES module scope` foi **DEFINITIVAMENTE CORRIGI
 - **Procfile**: `web: node heroku-server.cjs`
 - **Sem dependência de build**: Funciona imediatamente
 
-### 2. Funcionalidades Incluídas
-- ✅ API completa (/api/regions, /api/vehicle-info, /api/payments)
-- ✅ Serve arquivos estáticos quando disponíveis
-- ✅ Página de loading elegante como fallback
-- ✅ Auto-detecção de build completo
+### 2. Estratégia de Deploy: Vite + Proxy
+- **heroku-production-server.cjs**: Inicia Vite e faz proxy para a aplicação React
+- **Experiência idêntica ao Replit**: Mesma aplicação, mesmas funcionalidades
+- **Hot Module Replacement**: Funciona como desenvolvimento
+- **Fallback elegante**: Se Vite falhar, mostra página de loading
 
-### 3. Arquivos Criados/Modificados
-- `heroku-server.cjs` - Servidor principal
-- `Procfile` - Comando de inicialização
+### 3. Funcionalidades Incluídas
+- ✅ Aplicação React completa (igual ao Replit)
+- ✅ API completa (/api/regions, /api/vehicle-info, /api/payments)
+- ✅ Proxy transparente para Vite
+- ✅ Restart automático do Vite se necessário
+
+### 4. Arquivos Criados/Modificados
+- `heroku-production-server.cjs` - Servidor de produção com proxy para Vite
+- `heroku-server.cjs` - Servidor básico (fallback)
+- `Procfile` - Comando: `web: node heroku-production-server.cjs`
 - `app.json` - Configuração otimizada
 - `dist/index.html` - Página de fallback
 

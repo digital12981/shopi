@@ -1,1 +1,1 @@
-web: node heroku-server.cjs
+web: node heroku-production-server.cjs
