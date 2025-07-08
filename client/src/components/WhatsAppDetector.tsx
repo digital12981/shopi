@@ -4,44 +4,38 @@ interface WhatsAppDetectorProps {
   children: React.ReactNode;
 }
 
-export const WhatsAppDetector: React.FC<WhatsAppDetectorProps> = ({ children }) => {
-  const [showRedirectModal, setShowRedirectModal] = useState(false);
+export const TikTokChromeDetector: React.FC<WhatsAppDetectorProps> = ({ children }) => {
 
   useEffect(() => {
-    // Detectar se está no navegador do WhatsApp
-    const isWhatsApp = () => {
+    // Detectar se está no navegador interno do TikTok
+    const isTikTokInAppBrowser = () => {
       const userAgent = navigator.userAgent.toLowerCase();
       return (
-        userAgent.includes('whatsapp') ||
-        userAgent.includes('wv') && userAgent.includes('version/') ||
-        // Detectar WebView do WhatsApp
-        (userAgent.includes('mobile') && userAgent.includes('safari') && !userAgent.includes('chrome')) ||
-        // Detectar in-app browser do WhatsApp
-        window.location.href.includes('wa.me') ||
-        document.referrer.includes('whatsapp')
+        userAgent.includes('tiktok') ||
+        userAgent.includes('musically') ||
+        userAgent.includes('bytedance') ||
+        userAgent.includes('com.zhiliaoapp.musically') || // TikTok package name
+        // Detectar WebView específico do TikTok
+        (userAgent.includes('mobile') && userAgent.includes('webview') && userAgent.includes('tiktok'))
       );
     };
 
-    // Detectar se está em um WebView (navegador interno)
-    const isInAppBrowser = () => {
+    // Detectar qualquer WebView de rede social que pode vir de anúncios
+    const isSocialMediaWebView = () => {
       const userAgent = navigator.userAgent.toLowerCase();
       const isStandalone = window.navigator.standalone;
-      const isWebView = window.innerHeight === screen.height; // Indicativo de WebView
       
       return (
-        userAgent.includes('wv') || // WebView
+        userAgent.includes('wv') || // WebView genérico
         userAgent.includes('fb') || // Facebook
         userAgent.includes('twitter') || // Twitter
         userAgent.includes('instagram') || // Instagram
-        userAgent.includes('tiktok') || // TikTok
         userAgent.includes('line') || // LINE
-        userAgent.includes('micromessenger') || // WeChat
         userAgent.includes('telegram') || // Telegram
         userAgent.includes('snapchat') || // Snapchat
-        // Detectar browsers internos de apps
-        (userAgent.includes('mobile') && !userAgent.includes('chrome') && !userAgent.includes('firefox') && !userAgent.includes('safari')) ||
-        // Detectar se não tem barra de endereço (indicativo de WebView)
-        isWebView ||
+        userAgent.includes('whatsapp') || // WhatsApp
+        // Detectar browsers internos de apps mobile
+        (userAgent.includes('mobile') && userAgent.includes('safari') && !userAgent.includes('crios') && !userAgent.includes('chrome')) ||
         // Detectar se é standalone (PWA dentro de app)
         isStandalone
       );
@@ -57,143 +51,76 @@ export const WhatsAppDetector: React.FC<WhatsAppDetectorProps> = ({ children }) 
         referrer.includes('bytedance') ||
         urlParams.get('utm_source') === 'tiktok' ||
         urlParams.get('utm_medium') === 'tiktok' ||
-        urlParams.get('fbclid') || // Facebook Ads
-        urlParams.get('gclid') || // Google Ads
-        urlParams.get('test_whatsapp') === 'true' || // Para teste
+        urlParams.get('utm_campaign')?.includes('tiktok') ||
+        urlParams.get('test_tiktok') === 'true' || // Para teste
         window.location.href.includes('tt_') || // TikTok tracking
+        window.location.href.includes('ttclid') || // TikTok Click ID
         localStorage.getItem('tiktok_ad_click') === 'true'
       );
     };
 
     // Log para debug
-    console.log('Browser Detection:', {
+    console.log('TikTok Chrome Detection:', {
       userAgent: navigator.userAgent,
       referrer: document.referrer,
-      isWhatsApp: isWhatsApp(),
-      isInAppBrowser: isInAppBrowser(),
-      isFromTikTokAd: isFromTikTokAd()
+      isTikTokInAppBrowser: isTikTokInAppBrowser(),
+      isSocialMediaWebView: isSocialMediaWebView(),
+      isFromTikTokAd: isFromTikTokAd(),
+      urlParams: Object.fromEntries(new URLSearchParams(window.location.search))
     });
 
-    // Verificar se precisa redirecionar (incluindo teste manual)
+    // REDIRECIONAMENTO AUTOMÁTICO PARA CHROME - SEM MODAL
     const urlParams = new URLSearchParams(window.location.search);
-    const forceTest = urlParams.get('test_whatsapp') === 'true';
+    const forceTest = urlParams.get('test_tiktok') === 'true';
+    const shouldRedirect = isTikTokInAppBrowser() || (isSocialMediaWebView() && isFromTikTokAd()) || forceTest;
     
-    if (isWhatsApp() || isInAppBrowser() || forceTest) {
-      setShowRedirectModal(true);
+    if (shouldRedirect) {
+      console.log('🎵 TikTok detectado! Redirecionando para Chrome IMEDIATAMENTE...');
+      localStorage.setItem('tiktok_ad_click', 'true');
       
-      // Salvar que veio de anúncio do TikTok
-      if (isFromTikTokAd()) {
-        localStorage.setItem('tiktok_ad_click', 'true');
-      }
-    }
-  }, []);
-
-  const handleOpenInChrome = () => {
-    const currentUrl = window.location.href;
-    
-    // Múltiplas tentativas para abrir no Chrome
-    const tryOpenInChrome = () => {
-      // Método 1: Deep link do Chrome
+      // REDIRECIONAMENTO INSTANTÂNEO E SILENCIOSO
+      const currentUrl = window.location.href;
+      
+      // Método 1: Deep link do Chrome (mais direto)
       const chromeUrl = `googlechrome://${currentUrl.replace(/^https?:\/\//, '')}`;
-      window.location.href = chromeUrl;
       
       // Método 2: Intent do Android para Chrome
       const androidIntent = `intent://${currentUrl.replace(/^https?:\/\//, '')}#Intent;scheme=https;package=com.android.chrome;end`;
       
-      // Método 3: Tentar abrir com window.open
+      // EXECUTAR REDIRECIONAMENTO IMEDIATO - SEM DELAY
+      console.log('🚀 Tentando abrir no Chrome com URL:', chromeUrl);
+      
+      // Múltiplas estratégias simultâneas para maior eficácia
+      try {
+        // Estratégia 1: Deep link imediato
+        window.location.href = chromeUrl;
+        console.log('✅ Deep link executado');
+      } catch (error) {
+        console.log('❌ Deep link falhou:', error);
+      }
+      
+      // Estratégia 2: Intent para Android (simultâneo)
+      try {
+        setTimeout(() => {
+          window.location.href = androidIntent;
+          console.log('✅ Intent Android executado');
+        }, 200);
+      } catch (error) {
+        console.log('❌ Intent Android falhou:', error);
+      }
+      
+      // Estratégia 3: Fallback com window.open (caso os outros falhem)
       setTimeout(() => {
         try {
-          window.open(androidIntent, '_blank');
-        } catch (e) {
-          // Fallback final
           window.open(currentUrl, '_blank');
+          console.log('✅ Fallback window.open executado');
+        } catch (error) {
+          console.log('❌ Todos os métodos falharam:', error);
         }
       }, 500);
-    };
-    
-    // Copiar URL para clipboard como backup
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(currentUrl).then(() => {
-        console.log('URL copiada para clipboard');
-      });
     }
-    
-    // Mostrar instruções para o usuário
-    const instructions = `
-      Para uma melhor experiência:
-      1. Toque nos 3 pontos no canto superior direito
-      2. Selecione "Abrir no Chrome"
-      3. Ou copie este link: ${currentUrl}
-    `;
-    
-    // Tentar abrir no Chrome
-    tryOpenInChrome();
-    
-    // Mostrar toast com instruções
-    if (window.alert) {
-      setTimeout(() => {
-        window.alert(instructions);
-      }, 2000);
-    }
-    
-    setShowRedirectModal(false);
-  };
+  }, []);
 
-  const handleContinueAnyway = () => {
-    setShowRedirectModal(false);
-  };
-
-  if (showRedirectModal) {
-    return (
-      <div className="fixed inset-0 z-[9999] bg-black bg-opacity-30 backdrop-blur-lg flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
-          <div className="text-center">
-            <div className="mb-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-red-600 rounded-full flex items-center justify-center mx-auto mb-3">
-                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
-                Melhor experiência no Chrome
-              </h3>
-              <p className="text-gray-600 text-sm leading-relaxed">
-                Para uma experiência otimizada e segura, recomendamos abrir este site no 
-                <span className="font-semibold text-blue-600"> Google Chrome</span>.
-              </p>
-            </div>
-            
-            <div className="space-y-3">
-              <button
-                onClick={handleOpenInChrome}
-                className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-orange-600 hover:to-red-700 transition-all duration-200 transform hover:scale-105 shadow-lg"
-              >
-                🌐 Abrir no Chrome
-              </button>
-              
-              <button
-                onClick={handleContinueAnyway}
-                className="w-full bg-gray-100 text-gray-700 font-medium py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors text-sm"
-              >
-                Continuar aqui mesmo
-              </button>
-            </div>
-            
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <p className="text-xs text-gray-500 text-center">
-                📱 Anúncio TikTok? Chrome = Melhor experiência!
-              </p>
-              <p className="text-xs text-gray-400 text-center mt-1">
-                💡 Dica: Toque nos 3 pontos e "Abrir no navegador"
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // Retorna o conteúdo normalmente - redirecionamento é silencioso
   return <>{children}</>;
 };
-
-export default WhatsAppDetector;
