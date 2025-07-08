@@ -1,9 +1,8 @@
 {
   "name": "Shopee Delivery Partners",
-  "description": "Portal de Recrutamento para Shopee Delivery Partners",
-  "repository": "https://github.com/seu-usuario/shopee-delivery-partners",
-  "logo": "https://cdn.shopee.com.br/logo.png",
-  "keywords": ["node", "express", "static", "heroku", "shopee", "delivery"],
+  "description": "Sistema de recrutamento e pagamento para parceiros de entrega Shopee",
+  "repository": "https://github.com/digital12981/ENTREGAS",
+  "keywords": ["node", "express", "react", "vite", "typescript"],
   "buildpacks": [
     {
       "url": "heroku/nodejs"
@@ -11,12 +10,19 @@
   ],
   "env": {
     "NODE_ENV": {
-      "description": "Ambiente de execução da aplicação",
+      "description": "Environment",
       "value": "production"
+    },
+    "VEHICLE_API_KEY": {
+      "description": "API key for vehicle information lookup",
+      "required": true
+    },
+    "VITE_FOR4PAYMENTS_SECRET_KEY": {
+      "description": "For4Payments API secret key",
+      "required": true
     }
   },
   "scripts": {
-    "postdeploy": "echo 'Deploy completed'"
-  },
-  "success_url": "/"
+    "postdeploy": "npm run build"
+  }
 }
