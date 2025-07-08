@@ -1,7 +1,7 @@
 # Deploy no Heroku - Instruções
 
 ## Problema Resolvido
-O erro que você estava enfrentando era porque o Heroku estava detectando tanto Python quanto Node.js no projeto e escolhendo o buildpack Python incorretamente.
+O Heroku estava servindo apenas a API. Agora configurei um servidor completo que serve tanto o frontend quanto o backend.
 
 ## Configurações Aplicadas
 
@@ -9,9 +9,10 @@ O erro que você estava enfrentando era porque o Heroku estava detectando tanto 
 - Arquivo `.buildpacks` configurado para `heroku/nodejs`
 - Arquivo `app.json` criado especificando explicitamente o buildpack Node.js
 
-### 2. Procfile Simplificado
-- Comando alterado para `web: node api-server.js`
-- Remove variáveis de ambiente desnecessárias do comando
+### 2. Servidor Completo
+- Criado `heroku-fullstack-server.js` que serve frontend + backend
+- Procfile atualizado para fazer build e servir aplicação completa
+- Comando: `web: npm run build && node heroku-fullstack-server.js`
 
 ### 3. Variáveis de Ambiente Necessárias
 Configure estas variáveis no painel do Heroku:

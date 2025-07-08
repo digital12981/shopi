@@ -1,1 +1,1 @@
-web: node api-server.js
+web: npm run build && node heroku-fullstack-server.js
